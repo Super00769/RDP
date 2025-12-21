@@ -1,4 +1,4 @@
-name: RDP (Playit)
+name: RDP (Playit Fix)
 
 on:
   workflow_dispatch:
@@ -39,6 +39,12 @@ jobs:
 
       - name: Start Playit Agent
         run: |
-          Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-amd64.exe" -OutFile "playit.exe"
+          # Download using the CORRECT filename (x86_64)
+          $url = "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64.exe"
+          $output = "playit.exe"
+          
+          Write-Host "Downloading Playit from: $url"
+          Invoke-WebRequest -Uri $url -OutFile $output
+          
           Write-Host "Starting Playit... WAIT for the Claim URL below!"
           .\playit.exe
