@@ -1,4 +1,4 @@
-name: RDP (Tunnelmole Fixed)
+name: RDP (Cloudflare Backup)
 
 on:
   workflow_dispatch:
@@ -35,24 +35,24 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           echo "RDP_CREDS=User: RDP | Password: $pass" >> $env:GITHUB_ENV
 
-      - name: Start Tunnelmole & Maintain Connection
+      - name: Start Cloudflare & Maintain Connection
         run: |
-          # 1. Download Tunnelmole (OFFICIAL LINK)
-          $url = "https://tunnelmole.com/downloads/tmole.exe"
-          Invoke-WebRequest -Uri $url -OutFile "tmole.exe"
+          # 1. Download Cloudflare (Most Reliable Option)
+          $url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+          Invoke-WebRequest -Uri $url -OutFile "cloudflared.exe"
           
-          # 2. Start Tunnelmole in Background
-          Start-Process -FilePath ".\tmole.exe" -ArgumentList "3389" -RedirectStandardOutput "tmole.log" -PassThru
+          # 2. Start Tunnel (Standard Error used for logs)
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel --url tcp://localhost:3389" -RedirectStandardError "cloudflared.log" -PassThru
           
-          Write-Host "Tunnelmole started. Scanning for address..."
+          Write-Host "Cloudflare started. Scanning for address..."
           
           # 3. Find Address
           $address = $null
           $i = 0
           while ($i -lt 150) {
-              if (Test-Path "tmole.log") {
-                  $content = Get-Content "tmole.log"
-                  $match = $content | Select-String "public URL: (tcp://.*)"
+              if (Test-Path "cloudflared.log") {
+                  $content = Get-Content "cloudflared.log"
+                  $match = $content | Select-String "available at: (tcp://.*trycloudflare.com:[0-9]+)"
                   if ($match) {
                       $address = $match.Matches.Groups[1].Value -replace "tcp://", ""
                       break
@@ -63,11 +63,12 @@ jobs:
           }
           
           if (-not $address) {
-             Write-Error "Failed to get Tunnelmole address. Check logs."
+             Write-Error "Failed to get Cloudflare address."
+             Get-Content "cloudflared.log"
              exit 1
           }
           
-          # 4. Show Details & Keep Alive
+          # 4. Show Details
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $address"
           Write-Host "Username: RDP"
