@@ -1,4 +1,4 @@
-name: RDP (Bore Fixed)
+name: RDP (Tunnelmole Fixed)
 
 on:
   workflow_dispatch:
@@ -65,26 +65,25 @@ jobs:
               exit 1
           }
 
-      - name: Start Bore & Maintain Connection
+      - name: Start Tunnelmole & Maintain Connection
         run: |
-          # 1. Download Bore
-          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
-          Expand-Archive bore.zip -DestinationPath .
+          # 1. Download Tunnelmole
+          Invoke-WebRequest -Uri "https://github.com/robbie-cahill/tunnelmole-client/releases/latest/download/tmole.exe" -OutFile "tmole.exe"
           
-          # 2. Start Bore in Background (Same Step to prevent killing)
-          Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "bore.log" -PassThru
+          # 2. Start Tmole in Background (Same Step!)
+          Start-Process -FilePath ".\tmole.exe" -ArgumentList "3389" -RedirectStandardOutput "tmole.log" -PassThru
           
-          Write-Host "Bore started. Scanning for address..."
+          Write-Host "Tunnelmole started. Scanning for address..."
           
           # 3. Find Address
           $address = $null
           $i = 0
-          while ($i -lt 150) { # Wait up to 5 mins
-              if (Test-Path "bore.log") {
-                  $content = Get-Content "bore.log"
-                  $match = $content | Select-String "listening at (bore.pub:[0-9]+)"
+          while ($i -lt 150) {
+              if (Test-Path "tmole.log") {
+                  $content = Get-Content "tmole.log"
+                  $match = $content | Select-String "public URL: (tcp://.*)"
                   if ($match) {
-                      $address = $match.Matches.Groups[1].Value
+                      $address = $match.Matches.Groups[1].Value -replace "tcp://", ""
                       break
                   }
               }
@@ -93,11 +92,11 @@ jobs:
           }
           
           if (-not $address) {
-             Write-Error "Failed to get Bore address."
+             Write-Error "Failed to get Tunnelmole address."
              exit 1
           }
           
-          # 4. Show Details (Using your exact format)
+          # 4. Show Details
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $address"
           Write-Host "Username: RDP"
