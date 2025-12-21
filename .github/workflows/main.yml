@@ -1,4 +1,4 @@
-name: RDP (Cloudflare Auto-Find)
+name: RDP (Cloudflare Force Show)
 
 on:
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           echo "RDP_CREDS=User: RDP | Password: $pass" >> $env:GITHUB_ENV
 
-      - name: Start Cloudflare & Find Address
+      - name: Start Cloudflare & Dump Logs
         run: |
           # 1. Download Cloudflare
           $url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
@@ -44,41 +44,27 @@ jobs:
           # 2. Start Tunnel in Background
           Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel --url tcp://localhost:3389" -RedirectStandardError "cloudflared.log" -PassThru
           
-          Write-Host "Scanning logs for address..."
+          Write-Host "Cloudflare started. Waiting 15 seconds for logs to generate..."
+          Start-Sleep -Seconds 15
           
-          # 3. SEARCH for the Address (New Logic)
-          $address = $null
-          $i = 0
-          while ($i -lt 150) {
-              if (Test-Path "cloudflared.log") {
-                  $content = Get-Content "cloudflared.log"
-                  # This line hunts for the specific Cloudflare URL pattern
-                  $match = $content | Select-String "tcp://.*trycloudflare.com:[0-9]+"
-                  if ($match) {
-                      $address = $match.Matches.Value -replace "tcp://", ""
-                      break
-                  }
-              }
-              Start-Sleep -Seconds 2
-              $i++
+          # 3. DUMP THE ENTIRE LOG FILE
+          Write-Host "`n`n========================================================"
+          Write-Host "   DISPLAYING ALL LOGS BELOW "
+          Write-Host "   SCROLL UP TO FIND THE ADDRESS (tcp://...)"
+          Write-Host "========================================================`n`n"
+          
+          if (Test-Path "cloudflared.log") {
+              Get-Content "cloudflared.log"
+          } else {
+              Write-Error "Log file not found!"
           }
           
-          if (-not $address) {
-             Write-Error "Could not find address. Printing last 20 lines of log:"
-             Get-Content "cloudflared.log" -Tail 20
-             exit 1
-          }
-          
-          # 4. Print Address & Keep Alive
-          Write-Host "`n`n"
-          Write-Host "========================================================"
-          Write-Host "   SUCCESS! CONNECT TO THIS ADDRESS:"
-          Write-Host "   $address"
+          Write-Host "`n`n========================================================"
           Write-Host "   (User: RDP   Password: $(echo $env:RDP_CREDS))"
-          Write-Host "========================================================"
-          Write-Host "`n`n"
+          Write-Host "========================================================`n`n"
           
+          # 4. Keep Alive
           while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Address: $address"
+              Write-Host "RDP Active - If you missed the address, scroll up!"
               Start-Sleep -Seconds 300
           }
