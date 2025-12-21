@@ -1,4 +1,4 @@
-name: RDP (Playit Silent)
+name: RDP (Bore Direct)
 
 on:
   workflow_dispatch:
@@ -9,70 +9,36 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Configure Audio & RDP
+      - name: Configure RDP
         run: |
           Set-Service -Name Audiosrv -StartupType Automatic
           Start-Service -Name Audiosrv
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fDisableAudioCapture" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxDisconnectionTime" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall delete rule name="Allow-RDP"
-          netsh advfirewall firewall add rule name="Allow-RDP" dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall set rule group="Remote Desktop" new enable=Yes
 
-      - name: Create RDP User
+      - name: Create User
         run: |
-          $password = "User" + (Get-Random -Minimum 100000 -Maximum 999999)
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          $pass = "User" + (Get-Random -Minimum 100000 -Maximum 999999)
+          $securePass = ConvertTo-SecureString $pass -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+          echo "RDP_PASS=$pass" >> $env:GITHUB_ENV
 
-      - name: Show Login Details
+      - name: Start Bore Tunnel
         run: |
+          # Download Bore
+          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
+          Expand-Archive bore.zip -DestinationPath .
+          
+          # Show Login Info
           Write-Host "`n==============================================="
           Write-Host "   USERNAME: RDP"
           Write-Host "   PASSWORD: $env:RDP_PASS"
           Write-Host "==============================================="
-
-      - name: Start Playit (Silent Mode)
-        run: |
-          # 1. Download the LATEST version with the CONFIRMED filename
-          $url = "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64.exe"
-          Invoke-WebRequest -Uri $url -OutFile "playit.exe"
           
-          # 2. Start it in background and redirect output to a file (Fixes Freezing)
-          $process = Start-Process -FilePath ".\playit.exe" -RedirectStandardOutput "playit.log" -RedirectStandardError "playit_err.log" -PassThru
-          
-          Write-Host "Playit started in background. Scanning for Claim URL..."
-          
-          # 3. Read the log file until the Claim URL appears
-          $claimUrl = $null
-          $counter = 0
-          while ($counter -lt 30) {
-              if (Test-Path "playit.log") {
-                  $content = Get-Content "playit.log"
-                  $match = $content | Select-String "https://playit.gg/claim/"
-                  if ($match) {
-                      $claimUrl = $match.ToString().Trim()
-                      break
-                  }
-              }
-              Start-Sleep -Seconds 2
-              $counter++
-          }
-          
-          if ($claimUrl) {
-              Write-Host "`n========================================================"
-              Write-Host " ACTION REQUIRED: Click this link to connect!"
-              Write-Host " LINK: $claimUrl"
-              Write-Host "========================================================`n"
-          } else {
-              Write-Error "Could not find Claim URL. Check logs."
-              Get-Content "playit.log"
-          }
-          
-          # 4. Keep the runner alive
-          while ($true) { Start-Sleep -Seconds 60 }
+          # Start Tunnel
+          Write-Host "Starting Tunnel... LOOK FOR THE ADDRESS BELOW (e.g., bore.pub:XXXXX)"
+          .\bore.exe local 3389 --to bore.pub
