@@ -1,4 +1,4 @@
-name: RDP (Playit Legacy Fix)
+name: RDP (Playit Silent)
 
 on:
   workflow_dispatch:
@@ -37,14 +37,42 @@ jobs:
           Write-Host "   PASSWORD: $env:RDP_PASS"
           Write-Host "==============================================="
 
-      - name: Start Playit Agent (Legacy)
+      - name: Start Playit (Silent Mode)
         run: |
-          # We use v0.9.3 because the new version freezes in GitHub Actions
-          $url = "https://github.com/playit-cloud/playit-agent/releases/download/v0.9.3/playit-0.9.3-windows-amd64.exe"
-          $output = "playit.exe"
+          # 1. Download the LATEST version with the CONFIRMED filename
+          $url = "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64.exe"
+          Invoke-WebRequest -Uri $url -OutFile "playit.exe"
           
-          Write-Host "Downloading Legacy Playit..."
-          Invoke-WebRequest -Uri $url -OutFile $output
+          # 2. Start it in background and redirect output to a file (Fixes Freezing)
+          $process = Start-Process -FilePath ".\playit.exe" -RedirectStandardOutput "playit.log" -RedirectStandardError "playit_err.log" -PassThru
           
-          Write-Host "Starting Tunnel... CLICK THE LINK BELOW TO CLAIM!"
-          .\playit.exe
+          Write-Host "Playit started in background. Scanning for Claim URL..."
+          
+          # 3. Read the log file until the Claim URL appears
+          $claimUrl = $null
+          $counter = 0
+          while ($counter -lt 30) {
+              if (Test-Path "playit.log") {
+                  $content = Get-Content "playit.log"
+                  $match = $content | Select-String "https://playit.gg/claim/"
+                  if ($match) {
+                      $claimUrl = $match.ToString().Trim()
+                      break
+                  }
+              }
+              Start-Sleep -Seconds 2
+              $counter++
+          }
+          
+          if ($claimUrl) {
+              Write-Host "`n========================================================"
+              Write-Host " ACTION REQUIRED: Click this link to connect!"
+              Write-Host " LINK: $claimUrl"
+              Write-Host "========================================================`n"
+          } else {
+              Write-Error "Could not find Claim URL. Check logs."
+              Get-Content "playit.log"
+          }
+          
+          # 4. Keep the runner alive
+          while ($true) { Start-Sleep -Seconds 60 }
