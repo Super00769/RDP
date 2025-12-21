@@ -1,4 +1,4 @@
-name: RDP (Playit Fix)
+name: RDP (Playit Legacy Fix)
 
 on:
   workflow_dispatch:
@@ -37,14 +37,14 @@ jobs:
           Write-Host "   PASSWORD: $env:RDP_PASS"
           Write-Host "==============================================="
 
-      - name: Start Playit Agent
+      - name: Start Playit Agent (Legacy)
         run: |
-          # Download using the CORRECT filename (x86_64)
-          $url = "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64.exe"
+          # We use v0.9.3 because the new version freezes in GitHub Actions
+          $url = "https://github.com/playit-cloud/playit-agent/releases/download/v0.9.3/playit-0.9.3-windows-amd64.exe"
           $output = "playit.exe"
           
-          Write-Host "Downloading Playit from: $url"
+          Write-Host "Downloading Legacy Playit..."
           Invoke-WebRequest -Uri $url -OutFile $output
           
-          Write-Host "Starting Playit... WAIT for the Claim URL below!"
+          Write-Host "Starting Tunnel... CLICK THE LINK BELOW TO CLAIM!"
           .\playit.exe
