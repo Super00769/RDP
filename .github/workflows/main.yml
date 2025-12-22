@@ -1,4 +1,4 @@
-name: RDP (Stable + Apps + OBS + SuperTool EXE)
+name: RDP (Stable + Apps + OBS + SuperTool Auto-Fix)
 
 on:
   workflow_dispatch:
@@ -139,27 +139,30 @@ jobs:
           
           Write-Host "Installation, Shortcuts & Note Complete."
 
-      - name: Build SuperTool EXE (Fixed for Private Repo)
+      - name: Build SuperTool EXE (Fixed Size & Private Repo)
         run: |
           Write-Host "Building SuperTool..."
           
           # 1. Install Python Dependencies
           pip install pyinstaller customtkinter telethon opencv-python-headless pillow requests cryptg
           
-          # 2. Download script with AUTH TOKEN (Fixes 404 Error)
-          # Make sure your file is named 'SuperTool.py' in the repo!
+          # 2. Download script using GITHUB_TOKEN (Fixes 404 Error)
           $url = "https://raw.githubusercontent.com/${{ github.repository }}/main/SuperTool.py"
           Invoke-WebRequest -Uri $url -OutFile "SuperTool.py" -Headers @{"Authorization" = "token ${{ secrets.GITHUB_TOKEN }}"}
           
-          # 3. Compile to EXE
+          # --- 3. AUTO-FIX: RESIZE WINDOW TO FIT SCREEN ---
+          # This replaces "1000x950" with "900x650" so buttons are visible
+          ((Get-Content -Path "SuperTool.py" -Raw) -replace 'self.geometry\("1000x950"\)', 'self.geometry("900x650")') | Set-Content -Path "SuperTool.py"
+          
+          # 4. Compile to EXE
           pyinstaller --noconfirm --onefile --windowed --name "SuperTool" --collect-all customtkinter "SuperTool.py"
           
-          # 4. Move EXE to Public Desktop
+          # 5. Move EXE to Public Desktop
           if (Test-Path "dist\SuperTool.exe") {
               Move-Item -Path "dist\SuperTool.exe" -Destination "C:\Users\Public\Desktop\SuperTool.exe"
               Write-Host "SUCCESS: SuperTool.exe created on Desktop!"
           } else {
-              Write-Error "Build Failed! Could not create EXE. (Did you rename the file to SuperTool.py in your repo?)"
+              Write-Error "Build Failed! Could not create EXE. (Did you rename the file to SuperTool.py?)"
           }
 
       - name: Start Bore & Maintain Connection
