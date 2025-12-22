@@ -610,7 +610,7 @@ class ModeSelectFrame(ctk.CTkFrame):
         
         # --- CREDITS SECTION (ADDED AS REQUESTED) ---
         self.lbl_credits = ctk.CTkLabel(self, 
-            text="App created by Gaming Burst\nDiscord: @gamingburst007", 
+            text="SuperTool created by Gaming Burst\nDiscord: @gamingburst007", 
             font=("Roboto", 13, "bold"), text_color="#00E676")
         self.lbl_credits.pack(pady=(0, 20))
         # --------------------------------------------
