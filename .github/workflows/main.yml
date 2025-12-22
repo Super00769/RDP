@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps)
+name: RDP (Bore Stable + Apps + Discord)
 
 on:
   workflow_dispatch:
@@ -65,7 +65,7 @@ jobs:
               exit 1
           }
 
-      - name: Install Essential Apps (Fixed)
+      - name: Install Apps (Brave, Chrome, WinRAR, Discord)
         run: |
           Write-Host "Installing Apps..."
           
@@ -73,24 +73,37 @@ jobs:
           choco install winrar -y --no-progress
           choco install googlechrome -y --no-progress --ignore-checksums
           choco install brave -y --no-progress
+          choco install discord -y --no-progress
           
           # 2. FIX BRAVE: Move it from Admin Private Folder to Public Folder
           Write-Host "Moving Brave to Public Folder..."
-          $AdminPath = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
-          $PublicPath = "C:\BraveSoftware"
-          
-          # Copy Brave to C:\BraveSoftware so RDP user can access it
-          if (Test-Path $AdminPath) {
-              Copy-Item -Path $AdminPath -Destination "C:\" -Recurse -Force
+          $BraveAdmin = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
+          if (Test-Path $BraveAdmin) {
+              Copy-Item -Path $BraveAdmin -Destination "C:\" -Recurse -Force
+          }
+
+          # 3. FIX DISCORD: Move it from Admin Private Folder to Public Folder
+          Write-Host "Moving Discord to Public Folder..."
+          $DiscordAdmin = "C:\Users\runneradmin\AppData\Local\Discord"
+          if (Test-Path $DiscordAdmin) {
+              Copy-Item -Path $DiscordAdmin -Destination "C:\" -Recurse -Force
           }
           
-          # 3. Create Desktop Shortcuts
+          # 4. Create Desktop Shortcuts
           $WshShell = New-Object -comObject WScript.Shell
           
-          # Brave Shortcut (Point to New Public Location)
+          # Brave Shortcut
           $BraveLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Brave.lnk")
-          $BraveLnk.TargetPath = "$PublicPath\Brave-Browser\Application\brave.exe"
+          $BraveLnk.TargetPath = "C:\BraveSoftware\Brave-Browser\Application\brave.exe"
           $BraveLnk.Save()
+
+          # Discord Shortcut (Find the executable dynamically inside version folder)
+          $DiscordExe = Get-ChildItem -Path "C:\Discord" -Recurse -Filter "Discord.exe" | Select-Object -First 1
+          if ($DiscordExe) {
+              $DiscordLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Discord.lnk")
+              $DiscordLnk.TargetPath = $DiscordExe.FullName
+              $DiscordLnk.Save()
+          }
           
           # WinRAR Shortcut
           $RarLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\WinRAR.lnk")
