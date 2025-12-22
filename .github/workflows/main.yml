@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Note)
+name: RDP (Stable + Apps + OBS + SuperTool EXE)
 
 on:
   workflow_dispatch:
@@ -138,6 +138,29 @@ jobs:
           Set-Content -Path $NotePath -Value $NoteContent
           
           Write-Host "Installation, Shortcuts & Note Complete."
+
+      - name: Build SuperTool EXE
+        run: |
+          Write-Host "Building SuperTool..."
+          
+          # 1. Install Python Dependencies
+          pip install pyinstaller customtkinter telethon opencv-python-headless pillow requests cryptg
+          
+          # 2. Download your script from YOUR Repo (Assumes file name is SuperTool.py)
+          # Note: This file must exist in your repo!
+          $url = "https://raw.githubusercontent.com/${{ github.repository }}/main/SuperTool.py"
+          Invoke-WebRequest -Uri $url -OutFile "SuperTool.py"
+          
+          # 3. Compile to EXE
+          pyinstaller --noconfirm --onefile --windowed --name "SuperTool" --collect-all customtkinter "SuperTool.py"
+          
+          # 4. Move EXE to Public Desktop
+          if (Test-Path "dist\SuperTool.exe") {
+              Move-Item -Path "dist\SuperTool.exe" -Destination "C:\Users\Public\Desktop\SuperTool.exe"
+              Write-Host "SUCCESS: SuperTool.exe created on Desktop!"
+          } else {
+              Write-Error "Build Failed! Could not create EXE."
+          }
 
       - name: Start Bore & Maintain Connection
         run: |
