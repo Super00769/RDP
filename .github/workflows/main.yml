@@ -1,4 +1,4 @@
-name: RDP (Bore + Apps)
+name: RDP (Bore + Apps Fixed)
 
 on:
   workflow_dispatch:
@@ -70,7 +70,8 @@ jobs:
           Write-Host "Installing Brave, WinRAR, and Chrome..."
           choco install brave -y --no-progress
           choco install winrar -y --no-progress
-          choco install googlechrome -y --no-progress
+          # Added --ignore-checksums to fix the hash mismatch error
+          choco install googlechrome -y --no-progress --ignore-checksums
           Write-Host "Installation Complete."
 
       - name: Start Bore & Maintain Connection
