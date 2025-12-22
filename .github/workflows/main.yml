@@ -35,30 +35,37 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           echo "RDP_CREDS=User: RDP | Password: $pass" >> $env:GITHUB_ENV
 
-      - name: Install Essential Apps
+      - name: Install Essential Apps (Fixed Brave)
         run: |
           Write-Host "Installing Apps..."
           
-          # Install Brave, WinRAR, Chrome
-          choco install brave -y --no-progress
+          # 1. Install via Chocolatey
           choco install winrar -y --no-progress
           choco install googlechrome -y --no-progress --ignore-checksums
+          choco install brave -y --no-progress
           
-          # --- FIX: CREATE DESKTOP SHORTCUTS FOR RDP USER ---
-          $BravePath = "C:\Users\runneradmin\AppData\Local\BraveSoftware\Brave-Browser\Application\brave.exe"
-          $DestPath = "C:\Users\Public\Desktop\Brave.lnk"
+          # 2. FIX BRAVE: Move it from Admin Private Folder to Public Folder
+          Write-Host "Moving Brave to Public Folder..."
+          $AdminPath = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
+          $PublicPath = "C:\BraveSoftware"
           
-          if (Test-Path $BravePath) {
-              $WshShell = New-Object -comObject WScript.Shell
-              $Shortcut = $WshShell.CreateShortcut($DestPath)
-              $Shortcut.TargetPath = $BravePath
-              $Shortcut.Save()
-              Write-Host "Brave Shortcut created on Public Desktop."
-          } else {
-              Write-Warning "Brave executable not found at expected path."
-          }
+          # Copy Brave to C:\BraveSoftware so RDP user can access it
+          Copy-Item -Path $AdminPath -Destination "C:\" -Recurse -Force
           
-          Write-Host "Installation Complete."
+          # 3. Create Desktop Shortcuts
+          $WshShell = New-Object -comObject WScript.Shell
+          
+          # Brave Shortcut (Point to New Public Location)
+          $BraveLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Brave.lnk")
+          $BraveLnk.TargetPath = "$PublicPath\Brave-Browser\Application\brave.exe"
+          $BraveLnk.Save()
+          
+          # WinRAR Shortcut (Just in case)
+          $RarLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\WinRAR.lnk")
+          $RarLnk.TargetPath = "C:\Program Files\WinRAR\WinRAR.exe"
+          $RarLnk.Save()
+          
+          Write-Host "Installation & Shortcuts Complete."
 
       - name: Start Bore & Maintain Connection
         run: |
