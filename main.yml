@@ -1,4 +1,4 @@
-name: AppMake (Direct EXE Build)
+name: AppMake (Build Standalone EXE)
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
 
       - name: Create Portable App
         run: |
-          # Clean build to ensure fresh icon
+          # The --clean flag ensures the icon is updated fresh
           pyinstaller --noconfirm --onefile --windowed --clean `
             --name "SuperTool" `
             --icon "logo.ico" `
