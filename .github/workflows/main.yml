@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note)
 
 on:
   workflow_dispatch:
@@ -65,7 +65,7 @@ jobs:
               exit 1
           }
 
-      - name: Install Apps (Brave, Chrome, WinRAR, Discord)
+      - name: Install Apps & Create Note
         run: |
           Write-Host "Installing Apps..."
           
@@ -74,16 +74,15 @@ jobs:
           choco install googlechrome -y --no-progress --ignore-checksums
           choco install brave -y --no-progress
           choco install discord -y --no-progress
+          choco install obs-studio -y --no-progress
           
-          # 2. FIX BRAVE: Move it from Admin Private Folder to Public Folder
-          Write-Host "Moving Brave to Public Folder..."
+          # 2. FIX BRAVE: Move to Public Folder
           $BraveAdmin = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
           if (Test-Path $BraveAdmin) {
               Copy-Item -Path $BraveAdmin -Destination "C:\" -Recurse -Force
           }
 
-          # 3. FIX DISCORD: Move it from Admin Private Folder to Public Folder
-          Write-Host "Moving Discord to Public Folder..."
+          # 3. FIX DISCORD: Move to Public Folder
           $DiscordAdmin = "C:\Users\runneradmin\AppData\Local\Discord"
           if (Test-Path $DiscordAdmin) {
               Copy-Item -Path $DiscordAdmin -Destination "C:\" -Recurse -Force
@@ -97,7 +96,7 @@ jobs:
           $BraveLnk.TargetPath = "C:\BraveSoftware\Brave-Browser\Application\brave.exe"
           $BraveLnk.Save()
 
-          # Discord Shortcut (Find the executable dynamically inside version folder)
+          # Discord Shortcut
           $DiscordExe = Get-ChildItem -Path "C:\Discord" -Recurse -Filter "Discord.exe" | Select-Object -First 1
           if ($DiscordExe) {
               $DiscordLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Discord.lnk")
@@ -105,12 +104,40 @@ jobs:
               $DiscordLnk.Save()
           }
           
+          # OBS Shortcut
+          $OBSLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\OBS Studio.lnk")
+          $OBSLnk.TargetPath = "C:\Program Files\obs-studio\bin\64bit\obs64.exe"
+          $OBSLnk.WorkingDirectory = "C:\Program Files\obs-studio\bin\64bit"
+          $OBSLnk.Save()
+
           # WinRAR Shortcut
           $RarLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\WinRAR.lnk")
           $RarLnk.TargetPath = "C:\Program Files\WinRAR\WinRAR.exe"
           $RarLnk.Save()
           
-          Write-Host "Installation & Shortcuts Complete."
+          # 5. CREATE OBS SETTINGS NOTE ON DESKTOP
+          $NotePath = "C:\Users\Public\Desktop\OBS_Settings.txt"
+          $NoteContent = @"
+          OBS Resolution Settings (16:9 Ratio)
+          ====================================
+          
+          Use these settings in Settings -> Video
+          
+          1. 720p (HD) - Best Quality
+             - Base (Canvas): 1280x720
+             - Output (Scaled): 1280x720
+             
+          2. 480p (Standard) - Good Speed
+             - Base (Canvas): 854x480
+             - Output (Scaled): 854x480
+             
+          3. 360p (Low) - Fastest / Lowest Lag
+             - Base (Canvas): 640x360
+             - Output (Scaled): 640x360
+          "@
+          Set-Content -Path $NotePath -Value $NoteContent
+          
+          Write-Host "Installation, Shortcuts & Note Complete."
 
       - name: Start Bore & Maintain Connection
         run: |
