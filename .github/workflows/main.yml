@@ -1,22 +1,36 @@
-name: AppMake (Build Standalone EXE)
+name: AppMake (Build EXE + Fast RDP)
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-rdp:
     runs-on: windows-latest
+    timeout-minutes: 3600
+
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Install Python & Libraries
+      - name: Configure RDP Settings
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+
+      - name: Create RDP User
+        run: |
+          $p = "SuperTool@2025"
+          $securePass = ConvertTo-SecureString $p -AsPlainText -Force
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          echo "PASS=$p" >> $env:GITHUB_ENV
+
+      - name: Build Standalone SuperTool EXE
         run: |
           pip install pyinstaller customtkinter telethon opencv-python-headless pillow requests cryptg
-
-      - name: Create Portable App
-        run: |
-          # The --clean flag ensures the icon is updated fresh
+          
+          # Build with the logo baked in permanently
           pyinstaller --noconfirm --onefile --windowed --clean `
             --name "SuperTool" `
             --icon "logo.ico" `
@@ -24,8 +38,31 @@ jobs:
             --collect-all customtkinter `
             "SuperTool.py"
 
-      - name: Save Finished App
-        uses: actions/upload-artifact@v4
-        with:
-          name: My-SuperTool-App
-          path: dist/SuperTool.exe
+          # Move finished EXE and a copy of the logo to the Desktop
+          if (Test-Path "dist\SuperTool.exe") {
+              Move-Item -Path "dist\SuperTool.exe" -Destination "C:\Users\Public\Desktop\SuperTool.exe"
+              Copy-Item -Path "logo.ico" -Destination "C:\Users\Public\Desktop\logo.ico"
+          }
+
+      - name: Start Bore & Show Login
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
+          Expand-Archive bore.zip -DestinationPath .
+          Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "bore.log" -PassThru
+          
+          $address = $null
+          while (!$address) {
+              if (Test-Path "bore.log") {
+                  $match = Get-Content "bore.log" | Select-String "listening at (bore.pub:[0-9]+)"
+                  if ($match) { $address = $match.Matches.Groups[1].Value }
+              }
+              Start-Sleep -Seconds 2
+          }
+          
+          Write-Host "`n=============================="
+          Write-Host "RDP ADDRESS: $address"
+          Write-Host "USERNAME: RDP"
+          Write-Host "PASSWORD: ${{ env.PASS }}"
+          Write-Host "==============================`n"
+          
+          while ($true) { Start-Sleep -Seconds 300 }
