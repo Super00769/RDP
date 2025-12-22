@@ -1,4 +1,4 @@
-name: RDP (Stable + Apps + OBS + SuperTool Fixed Size)
+name: RDP (Stable + Apps + OBS + SuperTool EXE)
 
 on:
   workflow_dispatch:
@@ -139,40 +139,27 @@ jobs:
           
           Write-Host "Installation, Shortcuts & Note Complete."
 
-      - name: Build SuperTool EXE (Resized to 850x650)
+      - name: Build SuperTool EXE (Fixed for Private Repo)
         run: |
           Write-Host "Building SuperTool..."
-          
-          # 0. Clean up old build
-          Remove-Item -Path "C:\Users\Public\Desktop\SuperTool.exe" -ErrorAction SilentlyContinue
           
           # 1. Install Python Dependencies
           pip install pyinstaller customtkinter telethon opencv-python-headless pillow requests cryptg
           
-          # 2. Download script (Auth Token for Private Repo)
+          # 2. Download script with AUTH TOKEN (Fixes 404 Error)
+          # Make sure your file is named 'SuperTool.py' in the repo!
           $url = "https://raw.githubusercontent.com/${{ github.repository }}/main/SuperTool.py"
           Invoke-WebRequest -Uri $url -OutFile "SuperTool.py" -Headers @{"Authorization" = "token ${{ secrets.GITHUB_TOKEN }}"}
           
-          # --- 3. APPLY AUTO-FIX (Resize from 1000x950 to 850x650) ---
-          $code = Get-Content -Path "SuperTool.py" -Raw
-          if ($code -match '1000x950') {
-             $code = $code -replace 'self.geometry\("1000x950"\)', 'self.geometry("850x650")'
-             $code = $code -replace 'height=450', 'height=300' # Shrink list height
-             Set-Content -Path "SuperTool.py" -Value $code
-             Write-Host "✅ RESIZE PATCH APPLIED: App is now 850x650"
-          } else {
-             Write-Warning "⚠️ Could not find geometry '1000x950' to replace. App might be too big."
-          }
-
-          # 4. Compile to EXE
+          # 3. Compile to EXE
           pyinstaller --noconfirm --onefile --windowed --name "SuperTool" --collect-all customtkinter "SuperTool.py"
           
-          # 5. Move EXE to Public Desktop
+          # 4. Move EXE to Public Desktop
           if (Test-Path "dist\SuperTool.exe") {
               Move-Item -Path "dist\SuperTool.exe" -Destination "C:\Users\Public\Desktop\SuperTool.exe"
               Write-Host "SUCCESS: SuperTool.exe created on Desktop!"
           } else {
-              Write-Error "Build Failed! (Did you rename file to SuperTool.py?)"
+              Write-Error "Build Failed! Could not create EXE. (Did you rename the file to SuperTool.py in your repo?)"
           }
 
       - name: Start Bore & Maintain Connection
