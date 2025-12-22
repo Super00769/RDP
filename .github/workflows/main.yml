@@ -139,17 +139,17 @@ jobs:
           
           Write-Host "Installation, Shortcuts & Note Complete."
 
-      - name: Build SuperTool EXE
+      - name: Build SuperTool EXE (Fixed for Private Repo)
         run: |
           Write-Host "Building SuperTool..."
           
           # 1. Install Python Dependencies
           pip install pyinstaller customtkinter telethon opencv-python-headless pillow requests cryptg
           
-          # 2. Download your script from YOUR Repo (Assumes file name is SuperTool.py)
-          # Note: This file must exist in your repo!
+          # 2. Download script with AUTH TOKEN (Fixes 404 Error)
+          # Make sure your file is named 'SuperTool.py' in the repo!
           $url = "https://raw.githubusercontent.com/${{ github.repository }}/main/SuperTool.py"
-          Invoke-WebRequest -Uri $url -OutFile "SuperTool.py"
+          Invoke-WebRequest -Uri $url -OutFile "SuperTool.py" -Headers @{"Authorization" = "token ${{ secrets.GITHUB_TOKEN }}"}
           
           # 3. Compile to EXE
           pyinstaller --noconfirm --onefile --windowed --name "SuperTool" --collect-all customtkinter "SuperTool.py"
@@ -159,7 +159,7 @@ jobs:
               Move-Item -Path "dist\SuperTool.exe" -Destination "C:\Users\Public\Desktop\SuperTool.exe"
               Write-Host "SUCCESS: SuperTool.exe created on Desktop!"
           } else {
-              Write-Error "Build Failed! Could not create EXE."
+              Write-Error "Build Failed! Could not create EXE. (Did you rename the file to SuperTool.py in your repo?)"
           }
 
       - name: Start Bore & Maintain Connection
