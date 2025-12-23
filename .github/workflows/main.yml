@@ -1,0 +1,204 @@
+name: RDP (Bore Stable + Apps + Discord + OBS + Captura)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Configure Core RDP Settings
+        run: |
+          # --- AUDIO & SESSION FIXES START HERE ---
+          Set-Service -Name Audiosrv -StartupType Automatic
+          Start-Service -Name Audiosrv
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fDisableAudioCapture" -Value 0 -Force
+          # --- ADD THIS LINE TO KEEP SESSION ACTIVE IN BACKGROUND ---
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxDisconnectionTime" -Value 0 -Force
+          # --- FIXES END HERE ---
+
+          # Enable Remote Desktop and disable Network Level Authentication (if needed)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                             -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "SecurityLayer" -Value 0 -Force
+
+          # Remove any existing rule with the same name to avoid duplication
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          
+          # For testing, allow any incoming connection on port 3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale" `
+            dir=in action=allow protocol=TCP localport=3389
+
+          # (Optional) Restart the Remote Desktop service to ensure changes take effect
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User (Name: Super)
+        run: |
+          Add-Type -AssemblyName System.Security
+          $charSet = @{
+              Upper   = [char[]](65..90)      # A-Z
+              Lower   = [char[]](97..122)     # a-z
+              Number  = [char[]](48..57)      # 0-9
+              Special = ([char[]](33..47) + [char[]](58..64) +
+                         [char[]](91..96) + [char[]](123..126)) # Special characters
+          }
+          $rawPassword = @()
+          $rawPassword += $charSet.Upper | Get-Random -Count 4
+          $rawPassword += $charSet.Lower | Get-Random -Count 4
+          $rawPassword += $charSet.Number | Get-Random -Count 4
+          $rawPassword += $charSet.Special | Get-Random -Count 4
+          $password = -join ($rawPassword | Sort-Object { Get-Random })
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          
+          # --- USERNAME CHANGED TO "Super" HERE ---
+          New-LocalUser -Name "Super" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "Super"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Super"
+          
+          echo "RDP_CREDS=User: Super | Password: $password" >> $env:GITHUB_ENV
+          
+          if (-not (Get-LocalUser -Name "Super")) {
+              Write-Error "User creation failed"
+              exit 1
+          }
+
+      - name: Install Apps & Create Note
+        run: |
+          Write-Host "Installing Apps..."
+
+          # 0. INSTALL VIRTUAL AUDIO CABLE (REQUIRED for Recorders to hear audio)
+          Invoke-WebRequest "https://vb-audio.pages.dev/VBCABLE_Driver_Pack43.zip" -OutFile "vbcable.zip"
+          Expand-Archive "vbcable.zip" -DestinationPath "vbcable"
+          try {
+              Start-Process -FilePath "vbcable\VBCABLE_Setup_x64.exe" -ArgumentList "-i -h" -Verb RunAs -Wait
+              Write-Host "Audio Cable Installed."
+          } catch { Write-Host "Audio Cable Install Failed (might already be present)." }
+          
+          # 1. Install via Chocolatey
+          choco install winrar -y --no-progress
+          choco install googlechrome -y --no-progress --ignore-checksums
+          choco install brave -y --no-progress
+          choco install discord -y --no-progress
+          choco install obs-studio -y --no-progress
+          
+          # Install Captura (Simple Recorder) & FFmpeg (Required for it)
+          choco install ffmpeg -y --no-progress
+          choco install captura -y --no-progress
+          
+          # 2. FIX BRAVE: Move to Public Folder
+          $BraveAdmin = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
+          if (Test-Path $BraveAdmin) {
+              Copy-Item -Path $BraveAdmin -Destination "C:\" -Recurse -Force
+          }
+
+          # 3. FIX DISCORD: Move to Public Folder
+          $DiscordAdmin = "C:\Users\runneradmin\AppData\Local\Discord"
+          if (Test-Path $DiscordAdmin) {
+              Copy-Item -Path $DiscordAdmin -Destination "C:\" -Recurse -Force
+          }
+          
+          # 4. Create Desktop Shortcuts
+          $WshShell = New-Object -comObject WScript.Shell
+          
+          # Brave Shortcut
+          $BraveLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Brave.lnk")
+          $BraveLnk.TargetPath = "C:\BraveSoftware\Brave-Browser\Application\brave.exe"
+          $BraveLnk.Save()
+
+          # Discord Shortcut
+          $DiscordExe = Get-ChildItem -Path "C:\Discord" -Recurse -Filter "Discord.exe" | Select-Object -First 1
+          if ($DiscordExe) {
+              $DiscordLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Discord.lnk")
+              $DiscordLnk.TargetPath = $DiscordExe.FullName
+              $DiscordLnk.Save()
+          }
+          
+          # OBS Shortcut
+          $OBSLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\OBS Studio.lnk")
+          $OBSLnk.TargetPath = "C:\Program Files\obs-studio\bin\64bit\obs64.exe"
+          $OBSLnk.WorkingDirectory = "C:\Program Files\obs-studio\bin\64bit"
+          $OBSLnk.Save()
+          
+          # Captura Shortcut (The Simple Recorder)
+          $CapturaLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Captura.lnk")
+          $CapturaLnk.TargetPath = "C:\Program Files\Captura\Captura.exe"
+          $CapturaLnk.Save()
+
+          # WinRAR Shortcut
+          $RarLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\WinRAR.lnk")
+          $RarLnk.TargetPath = "C:\Program Files\WinRAR\WinRAR.exe"
+          $RarLnk.Save()
+          
+          # 5. CREATE OBS SETTINGS NOTE ON DESKTOP
+          $NotePath = "C:\Users\Public\Desktop\OBS_Settings.txt"
+          $NoteContent = @"
+          OBS Resolution Settings (16:9 Ratio)
+          ====================================
+          
+          Use these settings in Settings -> Video
+          
+          1. 720p (HD) - Best Quality
+             - Base (Canvas): 1280x720
+             - Output (Scaled): 1280x720
+             
+          2. 480p (Standard) - Good Speed
+             - Base (Canvas): 854x480
+             - Output (Scaled): 854x480
+             
+          3. 360p (Low) - Fastest / Lowest Lag
+             - Base (Canvas): 640x360
+             - Output (Scaled): 640x360
+          "@
+          Set-Content -Path $NotePath -Value $NoteContent
+          
+          Write-Host "Installation, Shortcuts & Note Complete."
+
+      - name: Start Bore & Maintain Connection
+        run: |
+          # 1. Download Bore
+          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
+          Expand-Archive bore.zip -DestinationPath .
+          
+          # 2. Start Bore in Background (Same Step to prevent killing)
+          Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "bore.log" -PassThru
+          
+          Write-Host "Bore started. Scanning for address..."
+          
+          # 3. Find Address
+          $address = $null
+          $i = 0
+          while ($i -lt 150) { # Wait up to 5 mins
+              if (Test-Path "bore.log") {
+                  $content = Get-Content "bore.log"
+                  $match = $content | Select-String "listening at (bore.pub:[0-9]+)"
+                  if ($match) {
+                      $address = $match.Matches.Groups[1].Value
+                      break
+                  }
+              }
+              Start-Sleep -Seconds 2
+              $i++
+          }
+          
+          if (-not $address) {
+             Write-Error "Failed to get Bore address."
+             exit 1
+          }
+          
+          # 4. Show Details (Using your exact format)
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $address"
+          Write-Host "Username: Super"
+          Write-Host "Password: $(echo $env:RDP_CREDS)"
+          Write-Host "==================`n"
+          
+          # 5. Keep runner active indefinitely
+          while ($true) {
+              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              Start-Sleep -Seconds 300
+          }
