@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix + Soundpad + Audio Refresh)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix + Soundpad Fix)
 
 on:
   workflow_dispatch:
@@ -85,11 +85,13 @@ jobs:
           choco install brave -y --no-progress
           choco install discord -y --no-progress
           choco install obs-studio -y --no-progress
-          # ADDED: FFmpeg and Captura
           choco install ffmpeg -y --no-progress
           choco install captura -y --no-progress
-          # ADDED: Soundpad
-          choco install soundpad -y --no-progress
+          
+          # --- FIX: MANUAL INSTALL FOR SOUNDPAD (Not on Chocolatey) ---
+          Invoke-WebRequest "https://files.leppsoft.com/Soundpad/Soundpad_x64.msi" -OutFile "Soundpad.msi"
+          Start-Process "msiexec.exe" -ArgumentList "/i Soundpad.msi /quiet /norestart" -Wait
+          # ------------------------------------------------------------
           
           # 2. FIX BRAVE: Move to Public Folder
           $BraveAdmin = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
@@ -104,9 +106,7 @@ jobs:
           }
           
           # 4. FIX CAPTURA: Find and Move to Public Folder (Solves "Missing Shortcut")
-          # Check AppData location
           $CapLoc1 = "C:\Users\runneradmin\AppData\Local\Captura"
-          # Check Chocolatey Tools location (Common for portable apps)
           $CapLoc2 = "C:\ProgramData\chocolatey\lib\captura\tools"
           
           if (Test-Path $CapLoc1) {
@@ -140,13 +140,13 @@ jobs:
           $OBSLnk.WorkingDirectory = "C:\Program Files\obs-studio\bin\64bit"
           $OBSLnk.Save()
           
-          # ADDED: Captura Shortcut (Pointing to the Fixed Location)
+          # Captura Shortcut
           $CapturaLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Captura.lnk")
           $CapturaLnk.TargetPath = "C:\Captura\Captura.exe"
           $CapturaLnk.WorkingDirectory = "C:\Captura"
           $CapturaLnk.Save()
           
-          # ADDED: Soundpad Shortcut
+          # Soundpad Shortcut
           $SoundpadLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Soundpad.lnk")
           $SoundpadLnk.TargetPath = "C:\Program Files\Soundpad\Soundpad.exe"
           $SoundpadLnk.Save()
