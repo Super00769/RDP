@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix + Soundpad Fix)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix)
 
 on:
   workflow_dispatch:
@@ -72,12 +72,13 @@ jobs:
           # 0. INSTALL AUDIO DRIVER (Add VB-Cable for Screen Recording Audio)
           choco install vb-cable -y --no-progress --ignore-checksums
 
-          # --- FIX: RESTART AUDIO SERVICES TO ACTIVATE DRIVER ---
+          # --- FIX ADDED: RESTART AUDIO SERVICES TO MAKE DEVICES VISIBLE ---
+          # This ensures Soundpad sees the device when you install it manually later.
           Write-Host "Refreshing Audio System..."
           Restart-Service -Name "Audiosrv" -Force
           try { Restart-Service -Name "AudioEndpointBuilder" -Force -ErrorAction SilentlyContinue } catch {}
           Start-Service -Name "Audiosrv"
-          # ------------------------------------------------------
+          # -----------------------------------------------------------------
 
           # 1. Install via Chocolatey
           choco install winrar -y --no-progress
@@ -88,14 +89,6 @@ jobs:
           # ADDED: FFmpeg and Captura
           choco install ffmpeg -y --no-progress
           choco install captura -y --no-progress
-          
-          # --- FIX: MANUAL INSTALL FOR SOUNDPAD (Using Backup Mirror) ---
-          Write-Host "Downloading Soundpad..."
-          # Uses Internet Archive mirror to bypass DNS/Blocking issues
-          curl.exe -L -o Soundpad.msi "https://web.archive.org/web/20240118104523/https://files.leppsoft.com/Soundpad/Soundpad_x64.msi"
-          Write-Host "Installing Soundpad..."
-          Start-Process "msiexec.exe" -ArgumentList "/i Soundpad.msi /quiet /norestart" -Wait
-          # ------------------------------------------------------------
           
           # 2. FIX BRAVE: Move to Public Folder
           $BraveAdmin = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
@@ -151,11 +144,6 @@ jobs:
           $CapturaLnk.TargetPath = "C:\Captura\Captura.exe"
           $CapturaLnk.WorkingDirectory = "C:\Captura"
           $CapturaLnk.Save()
-
-          # ADDED: Soundpad Shortcut
-          $SoundpadLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Soundpad.lnk")
-          $SoundpadLnk.TargetPath = "C:\Program Files\Soundpad\Soundpad.exe"
-          $SoundpadLnk.Save()
 
           # WinRAR Shortcut
           $RarLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\WinRAR.lnk")
