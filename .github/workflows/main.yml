@@ -37,7 +37,7 @@ jobs:
           # (Optional) Restart the Remote Desktop service to ensure changes take effect
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User (Name: Super)
+      - name: Create RDP User with Secure Password
         run: |
           Add-Type -AssemblyName System.Security
           $charSet = @{
@@ -54,15 +54,13 @@ jobs:
           $rawPassword += $charSet.Special | Get-Random -Count 4
           $password = -join ($rawPassword | Sort-Object { Get-Random })
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           
-          # --- USERNAME CHANGED TO "Super" HERE ---
-          New-LocalUser -Name "Super" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "Super"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Super"
+          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
           
-          echo "RDP_CREDS=User: Super | Password: $password" >> $env:GITHUB_ENV
-          
-          if (-not (Get-LocalUser -Name "Super")) {
+          if (-not (Get-LocalUser -Name "RDP")) {
               Write-Error "User creation failed"
               exit 1
           }
@@ -193,7 +191,7 @@ jobs:
           # 4. Show Details (Using your exact format)
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $address"
-          Write-Host "Username: Super"
+          Write-Host "Username: RDP"
           Write-Host "Password: $(echo $env:RDP_CREDS)"
           Write-Host "==================`n"
           
