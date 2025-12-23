@@ -69,8 +69,9 @@ jobs:
         run: |
           Write-Host "Installing Apps..."
 
-          # 0. INSTALL VIRTUAL AUDIO CABLE (REQUIRED for Recorders to hear audio)
-          Invoke-WebRequest "https://vb-audio.pages.dev/VBCABLE_Driver_Pack43.zip" -OutFile "vbcable.zip"
+          # 0. INSTALL VIRTUAL AUDIO CABLE (FIXED LINK)
+          # Replaced broken link with official reliable download
+          Invoke-WebRequest "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip" -OutFile "vbcable.zip"
           Expand-Archive "vbcable.zip" -DestinationPath "vbcable"
           try {
               Start-Process -FilePath "vbcable\VBCABLE_Setup_x64.exe" -ArgumentList "-i -h" -Verb RunAs -Wait
