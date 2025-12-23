@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix + Soundpad Fix)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix)
 
 on:
   workflow_dispatch:
@@ -71,13 +71,13 @@ jobs:
           
           # 0. INSTALL AUDIO DRIVER (Add VB-Cable for Screen Recording Audio)
           choco install vb-cable -y --no-progress --ignore-checksums
-          
-          # --- FIX: RESTART AUDIO SERVICES TO ACTIVATE DRIVER WITHOUT REBOOT ---
+
+          # --- FIX: RESTART AUDIO SERVICES TO ACTIVATE DRIVER ---
           Write-Host "Refreshing Audio System..."
           Restart-Service -Name "Audiosrv" -Force
           try { Restart-Service -Name "AudioEndpointBuilder" -Force -ErrorAction SilentlyContinue } catch {}
           Start-Service -Name "Audiosrv"
-          # ---------------------------------------------------------------------
+          # ------------------------------------------------------
 
           # 1. Install via Chocolatey
           choco install winrar -y --no-progress
@@ -85,13 +85,16 @@ jobs:
           choco install brave -y --no-progress
           choco install discord -y --no-progress
           choco install obs-studio -y --no-progress
+          # ADDED: FFmpeg and Captura
           choco install ffmpeg -y --no-progress
           choco install captura -y --no-progress
           
-          # --- FIX: MANUAL INSTALL FOR SOUNDPAD (Not on Chocolatey) ---
-          Invoke-WebRequest "https://files.leppsoft.com/Soundpad/Soundpad_x64.msi" -OutFile "Soundpad.msi"
+          # --- FIX: MANUAL INSTALL FOR SOUNDPAD (Using curl for better reliability) ---
+          Write-Host "Downloading Soundpad..."
+          curl.exe -L -o Soundpad.msi "https://files.leppsoft.com/Soundpad/Soundpad_x64.msi"
+          Write-Host "Installing Soundpad..."
           Start-Process "msiexec.exe" -ArgumentList "/i Soundpad.msi /quiet /norestart" -Wait
-          # ------------------------------------------------------------
+          # ----------------------------------------------------------------------------
           
           # 2. FIX BRAVE: Move to Public Folder
           $BraveAdmin = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
@@ -106,7 +109,9 @@ jobs:
           }
           
           # 4. FIX CAPTURA: Find and Move to Public Folder (Solves "Missing Shortcut")
+          # Check AppData location
           $CapLoc1 = "C:\Users\runneradmin\AppData\Local\Captura"
+          # Check Chocolatey Tools location (Common for portable apps)
           $CapLoc2 = "C:\ProgramData\chocolatey\lib\captura\tools"
           
           if (Test-Path $CapLoc1) {
@@ -140,13 +145,13 @@ jobs:
           $OBSLnk.WorkingDirectory = "C:\Program Files\obs-studio\bin\64bit"
           $OBSLnk.Save()
           
-          # Captura Shortcut
+          # ADDED: Captura Shortcut (Pointing to the Fixed Location)
           $CapturaLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Captura.lnk")
           $CapturaLnk.TargetPath = "C:\Captura\Captura.exe"
           $CapturaLnk.WorkingDirectory = "C:\Captura"
           $CapturaLnk.Save()
-          
-          # Soundpad Shortcut
+
+          # ADDED: Soundpad Shortcut
           $SoundpadLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Soundpad.lnk")
           $SoundpadLnk.TargetPath = "C:\Program Files\Soundpad\Soundpad.exe"
           $SoundpadLnk.Save()
