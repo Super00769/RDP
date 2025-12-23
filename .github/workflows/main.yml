@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix + No Watermark)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix)
 
 on:
   workflow_dispatch:
@@ -18,11 +18,6 @@ jobs:
           # --- ADD THIS LINE TO KEEP SESSION ACTIVE IN BACKGROUND ---
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxDisconnectionTime" -Value 0 -Force
           # --- FIXES END HERE ---
-
-          # --- REMOVE WATERMARK (Test Mode) ---
-          bcdedit /set testsigning off
-          bcdedit /set nointegritychecks off
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'PaintDesktopVersion' -Value 0 -Force
 
           # Enable Remote Desktop and disable Network Level Authentication (if needed)
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
