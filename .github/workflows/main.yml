@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Captura)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix)
 
 on:
   workflow_dispatch:
@@ -68,18 +68,17 @@ jobs:
       - name: Install Apps & Create Note
         run: |
           Write-Host "Installing Apps..."
-
-          # 0. INSTALL VIRTUAL AUDIO CABLE (REQUIRED for Recorders)
-          choco install vb-cable -y --no-progress --ignore-checksums
           
+          # 0. INSTALL AUDIO DRIVER (Add VB-Cable for Screen Recording Audio)
+          choco install vb-cable -y --no-progress --ignore-checksums
+
           # 1. Install via Chocolatey
           choco install winrar -y --no-progress
           choco install googlechrome -y --no-progress --ignore-checksums
           choco install brave -y --no-progress
           choco install discord -y --no-progress
           choco install obs-studio -y --no-progress
-          
-          # Install Captura (Simple Recorder) & FFmpeg (Required for it)
+          # ADDED: FFmpeg and Captura
           choco install ffmpeg -y --no-progress
           choco install captura -y --no-progress
           
@@ -95,14 +94,22 @@ jobs:
               Copy-Item -Path $DiscordAdmin -Destination "C:\" -Recurse -Force
           }
           
-          # NEW: FIX CAPTURA: Move to Public Folder (Fixes "Missing Shortcut" error)
-          $CapturaAdmin = "C:\Users\runneradmin\AppData\Local\Captura"
-          if (Test-Path $CapturaAdmin) { 
-               Copy-Item -Path $CapturaAdmin -Destination "C:\" -Recurse -Force 
-               Write-Host "Captura moved successfully."
+          # 4. FIX CAPTURA: Find and Move to Public Folder (Solves "Missing Shortcut")
+          # Check AppData location
+          $CapLoc1 = "C:\Users\runneradmin\AppData\Local\Captura"
+          # Check Chocolatey Tools location (Common for portable apps)
+          $CapLoc2 = "C:\ProgramData\chocolatey\lib\captura\tools"
+          
+          if (Test-Path $CapLoc1) {
+              Copy-Item -Path $CapLoc1 -Destination "C:\" -Recurse -Force
+              Rename-Item -Path "C:\Captura" -NewName "Captura_App" -ErrorAction SilentlyContinue # Prevent conflict
+              Rename-Item -Path "C:\Captura_App" -NewName "Captura"
+          }
+          elseif (Test-Path $CapLoc2) {
+              Copy-Item -Path $CapLoc2 -Destination "C:\Captura" -Recurse -Force
           }
           
-          # 4. Create Desktop Shortcuts
+          # 5. Create Desktop Shortcuts
           $WshShell = New-Object -comObject WScript.Shell
           
           # Brave Shortcut
@@ -124,16 +131,10 @@ jobs:
           $OBSLnk.WorkingDirectory = "C:\Program Files\obs-studio\bin\64bit"
           $OBSLnk.Save()
           
-          # Captura Shortcut (The Simple Recorder)
+          # ADDED: Captura Shortcut (Pointing to the Fixed Location)
           $CapturaLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Captura.lnk")
-          # Check if we moved it to C:\Captura, otherwise default to Program Files
-          if (Test-Path "C:\Captura\Captura.exe") {
-              $CapturaLnk.TargetPath = "C:\Captura\Captura.exe"
-              $CapturaLnk.WorkingDirectory = "C:\Captura"
-          } else {
-              $CapturaLnk.TargetPath = "C:\Program Files\Captura\Captura.exe"
-              $CapturaLnk.WorkingDirectory = "C:\Program Files\Captura"
-          }
+          $CapturaLnk.TargetPath = "C:\Captura\Captura.exe"
+          $CapturaLnk.WorkingDirectory = "C:\Captura"
           $CapturaLnk.Save()
 
           # WinRAR Shortcut
@@ -141,7 +142,7 @@ jobs:
           $RarLnk.TargetPath = "C:\Program Files\WinRAR\WinRAR.exe"
           $RarLnk.Save()
           
-          # 5. CREATE OBS SETTINGS NOTE ON DESKTOP
+          # 6. CREATE OBS SETTINGS NOTE ON DESKTOP
           $NotePath = "C:\Users\Public\Desktop\OBS_Settings.txt"
           $NoteContent = @"
           OBS Resolution Settings (16:9 Ratio)
