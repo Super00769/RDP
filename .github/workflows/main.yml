@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix + Soundpad Fix)
 
 on:
   workflow_dispatch:
@@ -89,12 +89,13 @@ jobs:
           choco install ffmpeg -y --no-progress
           choco install captura -y --no-progress
           
-          # --- FIX: MANUAL INSTALL FOR SOUNDPAD (Using curl for better reliability) ---
+          # --- FIX: MANUAL INSTALL FOR SOUNDPAD (Using Backup Mirror) ---
           Write-Host "Downloading Soundpad..."
-          curl.exe -L -o Soundpad.msi "https://files.leppsoft.com/Soundpad/Soundpad_x64.msi"
+          # Uses Internet Archive mirror to bypass DNS/Blocking issues
+          curl.exe -L -o Soundpad.msi "https://web.archive.org/web/20240118104523/https://files.leppsoft.com/Soundpad/Soundpad_x64.msi"
           Write-Host "Installing Soundpad..."
           Start-Process "msiexec.exe" -ArgumentList "/i Soundpad.msi /quiet /norestart" -Wait
-          # ----------------------------------------------------------------------------
+          # ------------------------------------------------------------
           
           # 2. FIX BRAVE: Move to Public Folder
           $BraveAdmin = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
