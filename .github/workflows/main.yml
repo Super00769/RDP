@@ -1,68 +1,191 @@
-name: AppMake (Build EXE + Fast RDP)
+name: RDP (Bore Stable + Apps + Discord + OBS + ShareX)
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-and-rdp:
+  secure-rdp:
     runs-on: windows-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
-
-      - name: Configure RDP Settings
+      - name: Configure Core RDP Settings
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+          # --- AUDIO & SESSION FIXES START HERE ---
+          Set-Service -Name Audiosrv -StartupType Automatic
+          Start-Service -Name Audiosrv
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fDisableAudioCapture" -Value 0 -Force
+          # --- ADD THIS LINE TO KEEP SESSION ACTIVE IN BACKGROUND ---
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxDisconnectionTime" -Value 0 -Force
+          # --- FIXES END HERE ---
 
-      - name: Create RDP User
+          # Enable Remote Desktop and disable Network Level Authentication (if needed)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                             -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "SecurityLayer" -Value 0 -Force
+
+          # Remove any existing rule with the same name to avoid duplication
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          
+          # For testing, allow any incoming connection on port 3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale" `
+            dir=in action=allow protocol=TCP localport=3389
+
+          # (Optional) Restart the Remote Desktop service to ensure changes take effect
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Secure Password
         run: |
-          $p = "SuperTool@2025"
-          $securePass = ConvertTo-SecureString $p -AsPlainText -Force
+          Add-Type -AssemblyName System.Security
+          $charSet = @{
+              Upper   = [char[]](65..90)      # A-Z
+              Lower   = [char[]](97..122)     # a-z
+              Number  = [char[]](48..57)      # 0-9
+              Special = ([char[]](33..47) + [char[]](58..64) +
+                         [char[]](91..96) + [char[]](123..126)) # Special characters
+          }
+          $rawPassword = @()
+          $rawPassword += $charSet.Upper | Get-Random -Count 4
+          $rawPassword += $charSet.Lower | Get-Random -Count 4
+          $rawPassword += $charSet.Number | Get-Random -Count 4
+          $rawPassword += $charSet.Special | Get-Random -Count 4
+          $password = -join ($rawPassword | Sort-Object { Get-Random })
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          echo "PASS=$p" >> $env:GITHUB_ENV
-
-      - name: Build Standalone SuperTool EXE
-        run: |
-          pip install pyinstaller customtkinter telethon opencv-python-headless pillow requests cryptg
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           
-          # Build with the logo baked in permanently
-          pyinstaller --noconfirm --onefile --windowed --clean `
-            --name "SuperTool" `
-            --icon "logo.ico" `
-            --add-data "logo.ico;." `
-            --collect-all customtkinter `
-            "SuperTool.py"
-
-          # Move finished EXE and a copy of the logo to the Desktop
-          if (Test-Path "dist\SuperTool.exe") {
-              Move-Item -Path "dist\SuperTool.exe" -Destination "C:\Users\Public\Desktop\SuperTool.exe"
-              Copy-Item -Path "logo.ico" -Destination "C:\Users\Public\Desktop\logo.ico"
+          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
+          
+          if (-not (Get-LocalUser -Name "RDP")) {
+              Write-Error "User creation failed"
+              exit 1
           }
 
-      - name: Start Bore & Show Login
+      - name: Install Apps & Create Note
         run: |
+          Write-Host "Installing Apps..."
+          
+          # 1. Install via Chocolatey
+          choco install winrar -y --no-progress
+          choco install googlechrome -y --no-progress --ignore-checksums
+          choco install brave -y --no-progress
+          choco install discord -y --no-progress
+          choco install obs-studio -y --no-progress
+          choco install sharex -y --no-progress
+          
+          # 2. FIX BRAVE: Move to Public Folder
+          $BraveAdmin = "C:\Users\runneradmin\AppData\Local\BraveSoftware"
+          if (Test-Path $BraveAdmin) {
+              Copy-Item -Path $BraveAdmin -Destination "C:\" -Recurse -Force
+          }
+
+          # 3. FIX DISCORD: Move to Public Folder
+          $DiscordAdmin = "C:\Users\runneradmin\AppData\Local\Discord"
+          if (Test-Path $DiscordAdmin) {
+              Copy-Item -Path $DiscordAdmin -Destination "C:\" -Recurse -Force
+          }
+          
+          # 4. Create Desktop Shortcuts
+          $WshShell = New-Object -comObject WScript.Shell
+          
+          # Brave Shortcut
+          $BraveLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Brave.lnk")
+          $BraveLnk.TargetPath = "C:\BraveSoftware\Brave-Browser\Application\brave.exe"
+          $BraveLnk.Save()
+
+          # Discord Shortcut
+          $DiscordExe = Get-ChildItem -Path "C:\Discord" -Recurse -Filter "Discord.exe" | Select-Object -First 1
+          if ($DiscordExe) {
+              $DiscordLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Discord.lnk")
+              $DiscordLnk.TargetPath = $DiscordExe.FullName
+              $DiscordLnk.Save()
+          }
+          
+          # OBS Shortcut
+          $OBSLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\OBS Studio.lnk")
+          $OBSLnk.TargetPath = "C:\Program Files\obs-studio\bin\64bit\obs64.exe"
+          $OBSLnk.WorkingDirectory = "C:\Program Files\obs-studio\bin\64bit"
+          $OBSLnk.Save()
+
+          # ShareX Shortcut (Lightweight Recorder)
+          $ShareXLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\ShareX.lnk")
+          $ShareXLnk.TargetPath = "C:\Program Files\ShareX\ShareX.exe"
+          $ShareXLnk.Save()
+
+          # WinRAR Shortcut
+          $RarLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\WinRAR.lnk")
+          $RarLnk.TargetPath = "C:\Program Files\WinRAR\WinRAR.exe"
+          $RarLnk.Save()
+          
+          # 5. CREATE OBS SETTINGS NOTE ON DESKTOP
+          $NotePath = "C:\Users\Public\Desktop\OBS_Settings.txt"
+          $NoteContent = @"
+          OBS Resolution Settings (16:9 Ratio)
+          ====================================
+          
+          Use these settings in Settings -> Video
+          
+          1. 720p (HD) - Best Quality
+             - Base (Canvas): 1280x720
+             - Output (Scaled): 1280x720
+             
+          2. 480p (Standard) - Good Speed
+             - Base (Canvas): 854x480
+             - Output (Scaled): 854x480
+             
+          3. 360p (Low) - Fastest / Lowest Lag
+             - Base (Canvas): 640x360
+             - Output (Scaled): 640x360
+          "@
+          Set-Content -Path $NotePath -Value $NoteContent
+          
+          Write-Host "Installation, Shortcuts & Note Complete."
+
+      - name: Start Bore & Maintain Connection
+        run: |
+          # 1. Download Bore
           Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
           Expand-Archive bore.zip -DestinationPath .
+          
+          # 2. Start Bore in Background (Same Step to prevent killing)
           Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "bore.log" -PassThru
           
+          Write-Host "Bore started. Scanning for address..."
+          
+          # 3. Find Address
           $address = $null
-          while (!$address) {
+          $i = 0
+          while ($i -lt 150) { # Wait up to 5 mins
               if (Test-Path "bore.log") {
-                  $match = Get-Content "bore.log" | Select-String "listening at (bore.pub:[0-9]+)"
-                  if ($match) { $address = $match.Matches.Groups[1].Value }
+                  $content = Get-Content "bore.log"
+                  $match = $content | Select-String "listening at (bore.pub:[0-9]+)"
+                  if ($match) {
+                      $address = $match.Matches.Groups[1].Value
+                      break
+                  }
               }
               Start-Sleep -Seconds 2
+              $i++
           }
           
-          Write-Host "`n=============================="
-          Write-Host "RDP ADDRESS: $address"
-          Write-Host "USERNAME: RDP"
-          Write-Host "PASSWORD: ${{ env.PASS }}"
-          Write-Host "==============================`n"
+          if (-not $address) {
+             Write-Error "Failed to get Bore address."
+             exit 1
+          }
           
-          while ($true) { Start-Sleep -Seconds 300 }
+          # 4. Show Details (Using your exact format)
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $address"
+          Write-Host "Username: RDP"
+          Write-Host "Password: $(echo $env:RDP_CREDS)"
+          Write-Host "==================`n"
+          
+          # 5. Keep runner active indefinitely
+          while ($true) {
+              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              Start-Sleep -Seconds 300
+          }
