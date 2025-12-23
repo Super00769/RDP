@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix + Audio Refresh)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix)
 
 on:
   workflow_dispatch:
@@ -71,14 +71,6 @@ jobs:
           
           # 0. INSTALL AUDIO DRIVER (Add VB-Cable for Screen Recording Audio)
           choco install vb-cable -y --no-progress --ignore-checksums
-
-          # --- FIX ADDED: RESTART AUDIO SERVICES TO MAKE DEVICES VISIBLE ---
-          # This ensures Soundpad sees the device when you install it manually later.
-          Write-Host "Refreshing Audio System..."
-          Restart-Service -Name "Audiosrv" -Force
-          try { Restart-Service -Name "AudioEndpointBuilder" -Force -ErrorAction SilentlyContinue } catch {}
-          Start-Service -Name "Audiosrv"
-          # -----------------------------------------------------------------
 
           # 1. Install via Chocolatey
           choco install winrar -y --no-progress
