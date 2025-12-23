@@ -1,4 +1,4 @@
-name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix)
+name: RDP (Bore Stable + Apps + Discord + OBS + Note + Captura Fix + Audio Refresh)
 
 on:
   workflow_dispatch:
