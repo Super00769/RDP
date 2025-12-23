@@ -69,7 +69,7 @@ jobs:
         run: |
           Write-Host "Installing Apps..."
 
-          # 0. INSTALL VIRTUAL AUDIO CABLE (Via Chocolatey to prevent freezing)
+          # 0. INSTALL VIRTUAL AUDIO CABLE (REQUIRED for Recorders)
           choco install vb-cable -y --no-progress --ignore-checksums
           
           # 1. Install via Chocolatey
@@ -93,6 +93,13 @@ jobs:
           $DiscordAdmin = "C:\Users\runneradmin\AppData\Local\Discord"
           if (Test-Path $DiscordAdmin) {
               Copy-Item -Path $DiscordAdmin -Destination "C:\" -Recurse -Force
+          }
+          
+          # NEW: FIX CAPTURA: Move to Public Folder (Fixes "Missing Shortcut" error)
+          $CapturaAdmin = "C:\Users\runneradmin\AppData\Local\Captura"
+          if (Test-Path $CapturaAdmin) { 
+               Copy-Item -Path $CapturaAdmin -Destination "C:\" -Recurse -Force 
+               Write-Host "Captura moved successfully."
           }
           
           # 4. Create Desktop Shortcuts
@@ -119,7 +126,14 @@ jobs:
           
           # Captura Shortcut (The Simple Recorder)
           $CapturaLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Captura.lnk")
-          $CapturaLnk.TargetPath = "C:\Program Files\Captura\Captura.exe"
+          # Check if we moved it to C:\Captura, otherwise default to Program Files
+          if (Test-Path "C:\Captura\Captura.exe") {
+              $CapturaLnk.TargetPath = "C:\Captura\Captura.exe"
+              $CapturaLnk.WorkingDirectory = "C:\Captura"
+          } else {
+              $CapturaLnk.TargetPath = "C:\Program Files\Captura\Captura.exe"
+              $CapturaLnk.WorkingDirectory = "C:\Program Files\Captura"
+          }
           $CapturaLnk.Save()
 
           # WinRAR Shortcut
