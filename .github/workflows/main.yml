@@ -69,13 +69,8 @@ jobs:
         run: |
           Write-Host "Installing Apps..."
 
-          # 0. INSTALL VIRTUAL AUDIO CABLE (FIXED LINK: Uses Official Mirror)
-          Invoke-WebRequest "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip" -OutFile "vbcable.zip"
-          Expand-Archive "vbcable.zip" -DestinationPath "vbcable"
-          try {
-              Start-Process -FilePath "vbcable\VBCABLE_Setup_x64.exe" -ArgumentList "-i -h" -Verb RunAs -Wait
-              Write-Host "Audio Cable Installed."
-          } catch { Write-Host "Audio Cable Install Failed (might already be present)." }
+          # 0. INSTALL VIRTUAL AUDIO CABLE (Via Chocolatey to prevent freezing)
+          choco install vb-cable -y --no-progress --ignore-checksums
           
           # 1. Install via Chocolatey
           choco install winrar -y --no-progress
