@@ -1,4 +1,4 @@
-name: RDP (Stable + Sync Button)
+name: RDP (Public Desktop Fix)
 
 on: workflow_dispatch
 
@@ -8,15 +8,15 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      # 1. DOWNLOAD REPO (Essential)
+      # 1. DOWNLOAD REPO
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. SETUP RCLONE & CONFIG
+      # 2. SETUP RCLONE
       - name: Setup Rclone
         run: |
           choco install rclone -y
-          # Create Shared Config at C:\rclone.conf
+          # Create Shared Config
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}" --config "C:\rclone.conf"
 
       # 3. CREATE USER "RDP"
@@ -28,31 +28,30 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
 
-      # 4. PREPARE FILES (*** SEARCH FIX ***)
+      # 4. PREPARE FILES (*** PUBLIC DESKTOP FIX ***)
       - name: Prepare Files & Desktop
         run: |
-          # A. Force Create Desktop Folders
-          New-Item -ItemType Directory -Force -Path "C:\Users\RDP\Desktop"
-          New-Item -ItemType Directory -Force -Path "C:\Users\RDP\Desktop\Work"
+          # A. Use Public Desktop (Visible to ALL users)
+          $publicDesktop = "C:\Users\Public\Desktop"
+          $workPath = "C:\Users\Public\Desktop\Work"
 
-          # B. Find autosave.py automatically and move it to C:\
-          # This prevents "Path not found" errors
+          # B. Find autosave.py and move to C:\
           $script = Get-ChildItem -Path "${{ github.workspace }}" -Filter "autosave.py" -Recurse | Select-Object -First 1
           if ($script) {
               Copy-Item -Path $script.FullName -Destination "C:\autosave.py" -Force
-              Write-Host "✅ Found and moved autosave.py to C:\"
-          } else {
-              Write-Error "❌ Could not find autosave.py in downloaded files!"
+              Write-Host "✅ Found and moved autosave.py"
           }
 
-          # C. Restore Data
-          rclone copy megaremote:RDP_Backup/Work "C:\Users\RDP\Desktop\Work" --config "C:\rclone.conf"
+          # C. Restore Data to Public Desktop
+          New-Item -ItemType Directory -Force -Path $workPath
+          rclone copy megaremote:RDP_Backup/Work $workPath --config "C:\rclone.conf"
 
-      # 5. CREATE SYNC BUTTON
+      # 5. CREATE SYNC BUTTON (On Public Desktop)
       - name: Create Sync Shortcut
         run: |
           $content = "python C:\autosave.py"
-          Set-Content -Path "C:\Users\RDP\Desktop\START_SYNC.bat" -Value $content
+          # This puts the button on EVERYONE'S screen
+          Set-Content -Path "C:\Users\Public\Desktop\START_SYNC.bat" -Value $content
 
       # 6. SYSTEM SETTINGS & APPS
       - name: System & Apps
@@ -61,16 +60,22 @@ jobs:
           Start-Service -Name Audiosrv
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fDisableAudioCapture" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxDisconnectionTime" -Value 0 -Force
+          
+          # Allow RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          
+          # Firewall
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
+          # Apps
           choco install googlechrome -y --no-progress
           choco install winrar -y --no-progress
           
+          # Chrome Shortcut on Public Desktop
           $WshShell = New-Object -comObject WScript.Shell
-          $ChromeLnk = $WshShell.CreateShortcut("C:\Users\RDP\Desktop\Chrome.lnk")
+          $ChromeLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Chrome.lnk")
           $ChromeLnk.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           $ChromeLnk.Save()
 
@@ -91,9 +96,9 @@ jobs:
           
           .\bore.exe local 3389 --to bore.pub
 
-      # 8. FINAL BACKUP
+      # 8. FINAL BACKUP (From Public Desktop)
       - name: Final Backup
         if: always()
         run: |
           Write-Host "Performing Final Sync..."
-          rclone sync "C:\Users\RDP\Desktop\Work" megaremote:RDP_Backup/Work --config "C:\rclone.conf"
+          rclone sync "C:\Users\Public\Desktop\Work" megaremote:RDP_Backup/Work --config "C:\rclone.conf"
