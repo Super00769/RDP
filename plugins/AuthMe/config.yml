@@ -1,1 +1,5 @@
-
+settings:
+  restrictions:
+    allowedNicknameCharacters: '[a-zA-Z0-9_. ]*'
+  teleportation:
+    teleportUnAuthedToSpawn: true
