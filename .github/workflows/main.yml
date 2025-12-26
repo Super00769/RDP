@@ -38,8 +38,8 @@ jobs:
           # Create a secure connection profile named 'mymega'
           rclone config create mymega mega user "$MEGA_EMAIL" pass "$MEGA_PASS"
 
-      # 3. Restore World (If backup exists)
-      - name: 📥 Restore World Backup
+      # 3. Restore World & Plugins (If backup exists)
+      - name: 📥 Restore Backup
         run: |
           mkdir -p server/minecraft-worlds
           mkdir -p server/plugins
@@ -47,15 +47,15 @@ jobs:
           echo "Checking MEGA for previous backup..."
           
           # Try to download. If fail, just print message and continue.
-          rclone copy mymega:minecraft-server/backup.zip server/ || echo "No backup found. Creating New World!"
+          rclone copy mymega:minecraft-server/backup.zip server/ || echo "No backup found. Starting Fresh!"
           
           if [ -f server/backup.zip ]; then
-            echo "Backup found! Unzipping..."
+            echo "Backup found! Unzipping World & Plugins..."
             unzip -o server/backup.zip -d server/
             rm server/backup.zip
           fi
 
-      # 4. Setup Server Logic
+      # 4. Setup Server Logic (With Seed Support)
       - name: Configure Server & Folders
         run: |
           # Force worlds into the 'minecraft-worlds' folder
@@ -67,6 +67,17 @@ jobs:
           echo "online-mode=false" >> server/server.properties
           echo "motd=GitHub Actions Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
+          
+          # ---------------------------------------------------------
+          # SEED LOGIC: If seed.txt exists, add it to properties!
+          # ---------------------------------------------------------
+          if [ -f seed.txt ]; then
+             SEED=$(cat seed.txt)
+             echo "✅ Custom Seed Found: $SEED"
+             echo "level-seed=$SEED" >> server/server.properties
+          else
+             echo "⚠️ No seed.txt found. Using Random Seed."
+          fi
 
       # 5. Download Core & Plugins (Smart Fallback Mode)
       - name: Download Paper (Smart Version Check) & Plugins
@@ -93,9 +104,10 @@ jobs:
           wget -O server/paper.jar "$PROJECT_URL/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
           
           # Copy Plugins from your Repo to Server
+          # Note: This overwrites old jars but keeps your Data folders (restored from backup) safe!
           cp -r plugins/* server/plugins/
 
-      # 6. Start the Server
+      # 6. Start the Server (With 5h 30m Safety Timer)
       - name: 🟢 Start Server
         env:
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
@@ -106,7 +118,9 @@ jobs:
           
           # Start Game
           cd server
-          java -Xms6G -Xmx6G -jar paper.jar nogui
+          # Run for 19800 seconds (5 hours 30 minutes) then automatically stop to save backup
+          echo "Starting server with 5h 30m safety timeout..."
+          timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
       # 7. Auto-Backup (Runs on Stop/Crash)
       - name: 📤 Backup to MEGA
@@ -115,11 +129,12 @@ jobs:
           echo "Server stopped. Starting backup..."
           cd server
           
-          # Zip ONLY the world data
-          zip -r backup.zip minecraft-worlds
+          # Zip World AND Plugins (Excluding .jar files to save space)
+          # This saves your AuthMe passwords, Inventory, and Configs!
+          zip -r backup.zip minecraft-worlds plugins -x "*.jar"
           
           echo "Uploading to MEGA..."
           # Save to 'minecraft-server' folder in MEGA
           rclone copy backup.zip mymega:minecraft-server/
           
-          echo "✅ Backup Complete! Data Saved."
+          echo "✅ Backup Complete! World & Passwords Saved."
