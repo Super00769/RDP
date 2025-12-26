@@ -5,8 +5,10 @@ import subprocess
 # --- CONFIGURATION ---
 REMOTE_NAME = "megaremote"
 CLOUD_FOLDER = "RDP_Backup/Work"
-LOCAL_FOLDER = r"C:\Users\RDP\Desktop\Work"
-CONFIG_PATH = r"C:\rclone.conf"  # Added this so the Sync Button works
+
+# *** FIXED PATH: Public Desktop (Visible on ALL Screens) ***
+LOCAL_FOLDER = r"C:\Users\Public\Desktop\Work"
+CONFIG_PATH = r"C:\rclone.conf"
 
 # Wait 2 seconds after a change to let the file finish saving
 DEBOUNCE_SECONDS = 2
@@ -27,7 +29,7 @@ def get_folder_state(folder):
 def backup():
     print(f"⚡ [Sync] Change detected! Mirroring to Mega...")
     
-    # Updated command to use the Shared Config file
+    # Sync using the Shared Config
     command = f'rclone sync "{LOCAL_FOLDER}" {REMOTE_NAME}:{CLOUD_FOLDER} --transfers=8 --config "{CONFIG_PATH}"'
     
     try:
@@ -40,7 +42,6 @@ def main():
     print("--- 👁️ SMART SYNC MONITOR STARTED ---")
     print(f"Watching: {LOCAL_FOLDER}")
     
-    # Check if config exists before starting
     if not os.path.exists(CONFIG_PATH):
         print(f"⚠️ Warning: Config not found at {CONFIG_PATH}")
     
