@@ -1,4 +1,4 @@
-name: RDP (Final Fixed Version)
+name: RDP (Stable + Sync Button)
 
 on: workflow_dispatch
 
@@ -8,27 +8,18 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      # ---------------------------------------------------
-      # 1. DOWNLOAD YOUR FILES (*** THIS FIXES THE ERROR ***)
-      # ---------------------------------------------------
+      # 1. DOWNLOAD REPO (Essential)
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # ---------------------------------------------------
-      # 2. SETUP RCLONE (Force Config Path & Fix Hang)
-      # ---------------------------------------------------
-      - name: Setup Rclone & Login
+      # 2. SETUP RCLONE & CONFIG
+      - name: Setup Rclone
         run: |
-          # Added -y to prevent it from getting stuck
           choco install rclone -y
-          
-          # Force config creation at C:\rclone.conf
+          # Create Shared Config at C:\rclone.conf
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}" --config "C:\rclone.conf"
-          Write-Host "Config created at C:\rclone.conf"
 
-      # ---------------------------------------------------
       # 3. CREATE USER "RDP"
-      # ---------------------------------------------------
       - name: Create RDP User
         run: |
           $password = "${{ secrets.RDP_PASS }}"
@@ -37,41 +28,34 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
 
-      # ---------------------------------------------------
-      # 4. PREPARE FILES & FIX DESKTOP PATH
-      # ---------------------------------------------------
+      # 4. PREPARE FILES (*** SEARCH FIX ***)
       - name: Prepare Files & Desktop
-        continue-on-error: true
         run: |
-          # 1. Move python script to C:\ root
-          # (This works now because we added the 'Checkout' step!)
-          Copy-Item "autosave.py" -Destination "C:\autosave.py"
-          
-          # 2. FORCE Create the RDP User's Desktop folder
-          # This fixes the "Could not find part of the path" error
-          $desktopPath = "C:\Users\RDP\Desktop"
-          $workPath = "C:\Users\RDP\Desktop\Work"
-          
-          New-Item -ItemType Directory -Force -Path $desktopPath
-          New-Item -ItemType Directory -Force -Path $workPath
-          
-          # 3. Restore Data using the shared config
-          rclone copy megaremote:RDP_Backup/Work $workPath --config "C:\rclone.conf"
+          # A. Force Create Desktop Folders
+          New-Item -ItemType Directory -Force -Path "C:\Users\RDP\Desktop"
+          New-Item -ItemType Directory -Force -Path "C:\Users\RDP\Desktop\Work"
 
-      # ---------------------------------------------------
-      # 5. CREATE "START_SYNC" BUTTON
-      # ---------------------------------------------------
+          # B. Find autosave.py automatically and move it to C:\
+          # This prevents "Path not found" errors
+          $script = Get-ChildItem -Path "${{ github.workspace }}" -Filter "autosave.py" -Recurse | Select-Object -First 1
+          if ($script) {
+              Copy-Item -Path $script.FullName -Destination "C:\autosave.py" -Force
+              Write-Host "✅ Found and moved autosave.py to C:\"
+          } else {
+              Write-Error "❌ Could not find autosave.py in downloaded files!"
+          }
+
+          # C. Restore Data
+          rclone copy megaremote:RDP_Backup/Work "C:\Users\RDP\Desktop\Work" --config "C:\rclone.conf"
+
+      # 5. CREATE SYNC BUTTON
       - name: Create Sync Shortcut
         run: |
-          # Now that we forced the folder to exist, this will work
           $content = "python C:\autosave.py"
           Set-Content -Path "C:\Users\RDP\Desktop\START_SYNC.bat" -Value $content
-          Write-Host "Shortcut created on Desktop."
 
-      # ---------------------------------------------------
-      # 6. CONFIGURE SYSTEM
-      # ---------------------------------------------------
-      - name: Configure System
+      # 6. SYSTEM SETTINGS & APPS
+      - name: System & Apps
         run: |
           Set-Service -Name Audiosrv -StartupType Automatic
           Start-Service -Name Audiosrv
@@ -82,48 +66,34 @@ jobs:
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
-      # ---------------------------------------------------
-      # 7. INSTALL APPS
-      # ---------------------------------------------------
-      - name: Install Apps
-        run: |
           choco install googlechrome -y --no-progress
           choco install winrar -y --no-progress
           
-          # Create Chrome Shortcut
           $WshShell = New-Object -comObject WScript.Shell
           $ChromeLnk = $WshShell.CreateShortcut("C:\Users\RDP\Desktop\Chrome.lnk")
           $ChromeLnk.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           $ChromeLnk.Save()
 
-      # ---------------------------------------------------
-      # 8. SETUP PYTHON
-      # ---------------------------------------------------
+      # 7. PYTHON & TUNNEL
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
 
-      # ---------------------------------------------------
-      # 9. START RDP TUNNEL
-      # ---------------------------------------------------
       - name: Start RDP Tunnel
         run: |
           Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
           Expand-Archive bore.zip -DestinationPath .
           
-          Write-Host "✅ RDP IS READY"
+          Write-Host "✅ RDP READY"
           Write-Host "👤 User: RDP"
           Write-Host "🔑 Pass: ${{ secrets.RDP_PASS }}"
           
           .\bore.exe local 3389 --to bore.pub
 
-      # ---------------------------------------------------
-      # 10. FINAL BACKUP
-      # ---------------------------------------------------
+      # 8. FINAL BACKUP
       - name: Final Backup
         if: always()
         run: |
           Write-Host "Performing Final Sync..."
-          # Uses the forced config path
           rclone sync "C:\Users\RDP\Desktop\Work" megaremote:RDP_Backup/Work --config "C:\rclone.conf"
