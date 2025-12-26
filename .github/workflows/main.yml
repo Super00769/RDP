@@ -1,4 +1,4 @@
-name: Organized Server 1.21.4
+name: Server with MEGA Backup
 
 on:
   workflow_dispatch:
@@ -17,39 +17,66 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Install Playit & JQ
+      - name: Install Tools (Playit, Rclone, Zip)
         run: |
+          # Install Playit
           curl -SsL https://playit-cloud.github.io/ppa/key.gpg | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/playit.gpg >/dev/null
           echo "deb [signed-by=/etc/apt/trusted.gpg.d/playit.gpg] https://playit-cloud.github.io/ppa/data ./" | sudo tee /etc/apt/sources.list.d/playit-cloud.list
           sudo apt-get update
-          sudo apt-get install playit jq
+          sudo apt-get install playit jq zip unzip
+          
+          # Install Rclone (for MEGA)
+          sudo -v ; curl https://rclone.org/install.sh | sudo bash
 
-      - name: Setup Server Folders
+      - name: Connect to MEGA
+        env:
+          MEGA_EMAIL: ${{ secrets.MEGA_EMAIL }}
+          MEGA_PASS: ${{ secrets.MEGA_PASS }}
         run: |
-          # Create the folder where worlds will live
+          # Use the corrected secret name here
+          rclone config create mymega mega user "$MEGA_EMAIL" pass "$MEGA_PASS"
+
+      - name: 📥 Restore World from Backup
+        run: |
           mkdir -p server/minecraft-worlds
           mkdir -p server/plugins
+          
+          echo "Checking MEGA for backup.zip..."
+          
+          # Try to copy 'backup.zip' from MEGA to the server folder
+          # If it fails, it prints "No backup" and continues without error.
+          rclone copy mymega:minecraft-server/backup.zip server/ || echo "No backup found. Starting fresh!"
+          
+          # If the file exists, unzip it
+          if [ -f server/backup.zip ]; then
+            echo "Backup found! Restoring..."
+            unzip -o server/backup.zip -d server/
+            rm server/backup.zip
+          else
+            echo "Starting with a new world."
+          fi
 
-          # Tell the server: "Put standard worlds inside the minecraft-worlds folder"
+      - name: Setup Server Configs
+        run: |
+          # Force server to use our custom world folder
           echo "settings:" > server/bukkit.yml
           echo "  world-container: minecraft-worlds" >> server/bukkit.yml
           
-          # Basic Configs
           echo "server-port=25565" > server/server.properties
           echo "online-mode=false" >> server/server.properties
           echo "eula=true" > server/eula.txt
 
-      - name: Download Paper 1.21.4 (Auto-Latest)
+      - name: Download Paper & Plugins
         run: |
+          # 1. Download Paper 1.21.4 (Latest Java)
           VERSION="1.21.4"
           BUILD=$(curl -s https://api.papermc.io/v2/projects/paper/versions/$VERSION | jq '.builds[-1]')
-          echo "Downloading Paper $VERSION Build $BUILD..."
           wget -O server/paper.jar "https://api.papermc.io/v2/projects/paper/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
+          
+          # 2. Copy your uploaded plugins (Geyser, ViaVersion, etc.)
+          cp plugins/*.jar server/plugins/
 
-      - name: Copy Plugins
-        run: cp plugins/*.jar server/plugins/
-
-      - name: Start Server
+      - name: 🟢 Start Server
         env:
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
@@ -57,3 +84,18 @@ jobs:
           sleep 10
           cd server
           java -Xms6G -Xmx6G -jar paper.jar nogui
+
+      - name: 📤 Backup World to MEGA
+        if: always() # Runs even if server crashes or you click Cancel
+        run: |
+          echo "Zipping world files..."
+          cd server
+          
+          # Zip ONLY the world data (minecraft-worlds folder)
+          zip -r backup.zip minecraft-worlds
+          
+          echo "Uploading to MEGA..."
+          # Uploads to a folder named 'minecraft-server' in your MEGA cloud
+          rclone copy backup.zip mymega:minecraft-server/
+          
+          echo "Backup Complete! Your world is saved."
