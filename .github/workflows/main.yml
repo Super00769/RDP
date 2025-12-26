@@ -1,4 +1,4 @@
-name: RDP (User RDP + Mega Save)
+name: RDP (Smart Sync + Public Desktop)
 
 on: workflow_dispatch
 
@@ -9,84 +9,71 @@ jobs:
 
     steps:
       # ---------------------------------------------------
-      # 1. SETUP RCLONE (Login to Mega)
+      # 1. SETUP RCLONE & LOGIN
       # ---------------------------------------------------
       - name: Setup Rclone & Login
         run: |
           choco install rclone
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}"
-          Write-Host "Logged into Mega successfully!"
+          Write-Host "Logged into Mega!"
 
       # ---------------------------------------------------
       # 2. CREATE USER "RDP" (Securely)
       # ---------------------------------------------------
       - name: Create RDP User
         run: |
-          # We use the Secret Password so it is HIDDEN in logs
+          # Uses your Secret Password (Hidden in logs)
           $password = "${{ secrets.RDP_PASS }}"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          
-          # Create the user
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-          
-          # Make them an Admin so they can install apps/change settings
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          
-          Write-Host "User 'RDP' created. Password is hidden."
 
       # ---------------------------------------------------
-      # 3. RESTORE DATA (To RDP Desktop)
+      # 3. RESTORE DATA -> TO PUBLIC DESKTOP
       # ---------------------------------------------------
       - name: Restore Data
         continue-on-error: true
         run: |
-          # We restore specifically to the new User's Desktop
-          $workPath = "C:\Users\RDP\Desktop\Work"
+          # Public Desktop = Visible to ALL users immediately
+          $workPath = "C:\Users\Public\Desktop\Work"
           
           New-Item -ItemType Directory -Force -Path $workPath
           Write-Host "Restoring backup to: $workPath"
           
-          # Copy from Mega
+          # We use 'copy' here to safely bring files down
           rclone copy megaremote:RDP_Backup/Work $workPath
 
       # ---------------------------------------------------
-      # 4. CONFIGURE SYSTEM & AUDIO FIXES
+      # 4. CONFIGURE SYSTEM & AUDIO
       # ---------------------------------------------------
       - name: Configure System
         run: |
-          # Audio Service
           Set-Service -Name Audiosrv -StartupType Automatic
           Start-Service -Name Audiosrv
-          
-          # Registry Fixes for RDP Stability
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fDisableAudioCapture" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxDisconnectionTime" -Value 0 -Force
-
-          # Enable RDP Connections
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-
-          # Firewall
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
       # ---------------------------------------------------
-      # 5. INSTALL APPS (Chrome + WinRAR)
+      # 5. INSTALL APPS (Shortcuts on Public Desktop)
       # ---------------------------------------------------
       - name: Install Apps
         run: |
           choco install googlechrome -y --no-progress
           choco install winrar -y --no-progress
           
-          # Create Chrome Shortcut on RDP User's Desktop
+          # Shortcut for Chrome
           $WshShell = New-Object -comObject WScript.Shell
-          $ChromeLnk = $WshShell.CreateShortcut("C:\Users\RDP\Desktop\Chrome.lnk")
+          $ChromeLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Chrome.lnk")
           $ChromeLnk.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           $ChromeLnk.Save()
 
       # ---------------------------------------------------
-      # 6. START AUTO-SAVE (Background)
+      # 6. START SMART SYNC (Background)
       # ---------------------------------------------------
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -95,9 +82,9 @@ jobs:
 
       - name: Launch Auto-Save
         run: |
-          # Starts the python script in a hidden window
+          # Starts the Smart Sync Monitor
           Start-Process python -ArgumentList "autosave.py" -WindowStyle Hidden
-          Write-Host "Auto-save script started. Watching C:\Users\RDP\Desktop\Work"
+          Write-Host "Smart Sync started. Watching C:\Users\Public\Desktop\Work"
 
       # ---------------------------------------------------
       # 7. START BORE TUNNEL
@@ -110,18 +97,16 @@ jobs:
           Write-Host "---------------------------------------------------"
           Write-Host "✅ RDP IS READY"
           Write-Host "👤 User: RDP"
-          # The password will appear as '***' in the logs (Secure)
           Write-Host "🔑 Pass: ${{ secrets.RDP_PASS }}"
           Write-Host "---------------------------------------------------"
           
-          # Start the connection
           .\bore.exe local 3389 --to bore.pub
 
       # ---------------------------------------------------
-      # 8. FINAL BACKUP (Safety Net)
+      # 8. FINAL BACKUP
       # ---------------------------------------------------
       - name: Final Backup
         if: always()
         run: |
-          Write-Host "Saving Data from RDP Desktop..."
-          rclone copy "C:\Users\RDP\Desktop\Work" megaremote:RDP_Backup/Work
+          Write-Host "Session Ending... Performing Final Sync..."
+          rclone sync "C:\Users\Public\Desktop\Work" megaremote:RDP_Backup/Work
