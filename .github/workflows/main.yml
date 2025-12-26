@@ -1,4 +1,4 @@
-name: RDP (Smart Sync + Public Desktop)
+name: RDP (Manual Sync Button)
 
 on: workflow_dispatch
 
@@ -8,45 +8,48 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      # ---------------------------------------------------
-      # 1. SETUP RCLONE & LOGIN
-      # ---------------------------------------------------
+      # 1. SETUP RCLONE & PREPARE SHARED CONFIG
       - name: Setup Rclone & Login
         run: |
           choco install rclone
+          # Create config in default location
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}"
-          Write-Host "Logged into Mega!"
+          
+          # COPY CONFIG TO C:\ SO RDP USER CAN USE IT
+          Copy-Item "C:\Users\runneradmin\.config\rclone\rclone.conf" -Destination "C:\rclone.conf"
+          Write-Host "Config copied to C:\rclone.conf"
 
-      # ---------------------------------------------------
-      # 2. CREATE USER "RDP" (Securely)
-      # ---------------------------------------------------
+      # 2. CREATE USER "RDP"
       - name: Create RDP User
         run: |
-          # Uses your Secret Password (Hidden in logs)
           $password = "${{ secrets.RDP_PASS }}"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
 
-      # ---------------------------------------------------
-      # 3. RESTORE DATA -> TO PUBLIC DESKTOP
-      # ---------------------------------------------------
-      - name: Restore Data
+      # 3. MOVE SCRIPTS & RESTORE DATA
+      - name: Prepare Files
         continue-on-error: true
         run: |
-          # Public Desktop = Visible to ALL users immediately
-          $workPath = "C:\Users\Public\Desktop\Work"
+          # Move python script to C:\ root so it's easy to find
+          Copy-Item "autosave.py" -Destination "C:\autosave.py"
           
+          # Restore Data to RDP Desktop
+          $workPath = "C:\Users\RDP\Desktop\Work"
           New-Item -ItemType Directory -Force -Path $workPath
-          Write-Host "Restoring backup to: $workPath"
           
-          # We use 'copy' here to safely bring files down
-          rclone copy megaremote:RDP_Backup/Work $workPath
+          # Use the shared config for restore
+          rclone copy megaremote:RDP_Backup/Work $workPath --config "C:\rclone.conf"
 
-      # ---------------------------------------------------
-      # 4. CONFIGURE SYSTEM & AUDIO
-      # ---------------------------------------------------
+      # 4. CREATE DESKTOP SHORTCUT FOR SYNC
+      - name: Create Sync Shortcut
+        run: |
+          $content = "python C:\autosave.py"
+          Set-Content -Path "C:\Users\RDP\Desktop\START_SYNC.bat" -Value $content
+          Write-Host "Shortcut created on Desktop."
+
+      # 5. CONFIGURE SYSTEM
       - name: Configure System
         run: |
           Set-Service -Name Audiosrv -StartupType Automatic
@@ -58,55 +61,37 @@ jobs:
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
-      # ---------------------------------------------------
-      # 5. INSTALL APPS (Shortcuts on Public Desktop)
-      # ---------------------------------------------------
+      # 6. INSTALL APPS
       - name: Install Apps
         run: |
           choco install googlechrome -y --no-progress
           choco install winrar -y --no-progress
-          
-          # Shortcut for Chrome
           $WshShell = New-Object -comObject WScript.Shell
-          $ChromeLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Chrome.lnk")
+          $ChromeLnk = $WshShell.CreateShortcut("C:\Users\RDP\Desktop\Chrome.lnk")
           $ChromeLnk.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           $ChromeLnk.Save()
 
-      # ---------------------------------------------------
-      # 6. START SMART SYNC (Background)
-      # ---------------------------------------------------
+      # 7. SETUP PYTHON
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
 
-      - name: Launch Auto-Save
-        run: |
-          # Starts the Smart Sync Monitor
-          Start-Process python -ArgumentList "autosave.py" -WindowStyle Hidden
-          Write-Host "Smart Sync started. Watching C:\Users\Public\Desktop\Work"
-
-      # ---------------------------------------------------
-      # 7. START BORE TUNNEL
-      # ---------------------------------------------------
+      # 8. START BORE TUNNEL
       - name: Start RDP Tunnel
         run: |
           Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
           Expand-Archive bore.zip -DestinationPath .
           
-          Write-Host "---------------------------------------------------"
           Write-Host "✅ RDP IS READY"
           Write-Host "👤 User: RDP"
           Write-Host "🔑 Pass: ${{ secrets.RDP_PASS }}"
-          Write-Host "---------------------------------------------------"
           
           .\bore.exe local 3389 --to bore.pub
 
-      # ---------------------------------------------------
-      # 8. FINAL BACKUP
-      # ---------------------------------------------------
+      # 9. FINAL BACKUP
       - name: Final Backup
         if: always()
         run: |
-          Write-Host "Session Ending... Performing Final Sync..."
-          rclone sync "C:\Users\Public\Desktop\Work" megaremote:RDP_Backup/Work
+          Write-Host "Final Backup..."
+          rclone sync "C:\Users\RDP\Desktop\Work" megaremote:RDP_Backup/Work --config "C:\rclone.conf"
