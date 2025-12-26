@@ -1,4 +1,4 @@
-name: RDP (Hang Fixed + Path Fixed)
+name: RDP (Final Fixed Version)
 
 on: workflow_dispatch
 
@@ -9,11 +9,17 @@ jobs:
 
     steps:
       # ---------------------------------------------------
-      # 1. SETUP RCLONE (*** HANG FIXED ***)
+      # 1. DOWNLOAD YOUR FILES (*** THIS FIXES THE ERROR ***)
+      # ---------------------------------------------------
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # ---------------------------------------------------
+      # 2. SETUP RCLONE (Force Config Path & Fix Hang)
       # ---------------------------------------------------
       - name: Setup Rclone & Login
         run: |
-          # Added -y so it doesn't get stuck waiting for confirmation
+          # Added -y to prevent it from getting stuck
           choco install rclone -y
           
           # Force config creation at C:\rclone.conf
@@ -21,7 +27,7 @@ jobs:
           Write-Host "Config created at C:\rclone.conf"
 
       # ---------------------------------------------------
-      # 2. CREATE USER "RDP"
+      # 3. CREATE USER "RDP"
       # ---------------------------------------------------
       - name: Create RDP User
         run: |
@@ -32,12 +38,13 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
 
       # ---------------------------------------------------
-      # 3. PREPARE FILES & FIX DESKTOP PATH
+      # 4. PREPARE FILES & FIX DESKTOP PATH
       # ---------------------------------------------------
       - name: Prepare Files & Desktop
         continue-on-error: true
         run: |
           # 1. Move python script to C:\ root
+          # (This works now because we added the 'Checkout' step!)
           Copy-Item "autosave.py" -Destination "C:\autosave.py"
           
           # 2. FORCE Create the RDP User's Desktop folder
@@ -52,7 +59,7 @@ jobs:
           rclone copy megaremote:RDP_Backup/Work $workPath --config "C:\rclone.conf"
 
       # ---------------------------------------------------
-      # 4. CREATE "START_SYNC" BUTTON
+      # 5. CREATE "START_SYNC" BUTTON
       # ---------------------------------------------------
       - name: Create Sync Shortcut
         run: |
@@ -62,7 +69,7 @@ jobs:
           Write-Host "Shortcut created on Desktop."
 
       # ---------------------------------------------------
-      # 5. CONFIGURE SYSTEM
+      # 6. CONFIGURE SYSTEM
       # ---------------------------------------------------
       - name: Configure System
         run: |
@@ -76,7 +83,7 @@ jobs:
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
       # ---------------------------------------------------
-      # 6. INSTALL APPS
+      # 7. INSTALL APPS
       # ---------------------------------------------------
       - name: Install Apps
         run: |
@@ -90,7 +97,7 @@ jobs:
           $ChromeLnk.Save()
 
       # ---------------------------------------------------
-      # 7. SETUP PYTHON
+      # 8. SETUP PYTHON
       # ---------------------------------------------------
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -98,7 +105,7 @@ jobs:
           python-version: '3.10' 
 
       # ---------------------------------------------------
-      # 8. START RDP TUNNEL
+      # 9. START RDP TUNNEL
       # ---------------------------------------------------
       - name: Start RDP Tunnel
         run: |
@@ -112,7 +119,7 @@ jobs:
           .\bore.exe local 3389 --to bore.pub
 
       # ---------------------------------------------------
-      # 9. FINAL BACKUP
+      # 10. FINAL BACKUP
       # ---------------------------------------------------
       - name: Final Backup
         if: always()
