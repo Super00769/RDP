@@ -1,4 +1,4 @@
-name: RDP (Manual Sync Button)
+name: RDP (Manual Sync Button + Fix)
 
 on: workflow_dispatch
 
@@ -8,18 +8,20 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      # 1. SETUP RCLONE & PREPARE SHARED CONFIG
+      # ---------------------------------------------------
+      # 1. SETUP RCLONE (*** FIXED ***)
+      # ---------------------------------------------------
       - name: Setup Rclone & Login
         run: |
           choco install rclone
-          # Create config in default location
-          rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}"
-          
-          # COPY CONFIG TO C:\ SO RDP USER CAN USE IT
-          Copy-Item "C:\Users\runneradmin\.config\rclone\rclone.conf" -Destination "C:\rclone.conf"
-          Write-Host "Config copied to C:\rclone.conf"
+          # We force the config to be saved directly at C:\rclone.conf
+          # This fixes the "File not found" error permanently.
+          rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}" --config "C:\rclone.conf"
+          Write-Host "Config created successfully at C:\rclone.conf"
 
+      # ---------------------------------------------------
       # 2. CREATE USER "RDP"
+      # ---------------------------------------------------
       - name: Create RDP User
         run: |
           $password = "${{ secrets.RDP_PASS }}"
@@ -28,11 +30,13 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
 
-      # 3. MOVE SCRIPTS & RESTORE DATA
+      # ---------------------------------------------------
+      # 3. RESTORE DATA & PREPARE SCRIPTS
+      # ---------------------------------------------------
       - name: Prepare Files
         continue-on-error: true
         run: |
-          # Move python script to C:\ root so it's easy to find
+          # Move python script to C:\ so it is easy to find
           Copy-Item "autosave.py" -Destination "C:\autosave.py"
           
           # Restore Data to RDP Desktop
@@ -42,14 +46,18 @@ jobs:
           # Use the shared config for restore
           rclone copy megaremote:RDP_Backup/Work $workPath --config "C:\rclone.conf"
 
-      # 4. CREATE DESKTOP SHORTCUT FOR SYNC
+      # ---------------------------------------------------
+      # 4. CREATE "START_SYNC" BUTTON
+      # ---------------------------------------------------
       - name: Create Sync Shortcut
         run: |
           $content = "python C:\autosave.py"
           Set-Content -Path "C:\Users\RDP\Desktop\START_SYNC.bat" -Value $content
           Write-Host "Shortcut created on Desktop."
 
+      # ---------------------------------------------------
       # 5. CONFIGURE SYSTEM
+      # ---------------------------------------------------
       - name: Configure System
         run: |
           Set-Service -Name Audiosrv -StartupType Automatic
@@ -61,7 +69,9 @@ jobs:
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
+      # ---------------------------------------------------
       # 6. INSTALL APPS
+      # ---------------------------------------------------
       - name: Install Apps
         run: |
           choco install googlechrome -y --no-progress
@@ -71,13 +81,17 @@ jobs:
           $ChromeLnk.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           $ChromeLnk.Save()
 
+      # ---------------------------------------------------
       # 7. SETUP PYTHON
+      # ---------------------------------------------------
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
 
-      # 8. START BORE TUNNEL
+      # ---------------------------------------------------
+      # 8. START RDP TUNNEL
+      # ---------------------------------------------------
       - name: Start RDP Tunnel
         run: |
           Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
@@ -89,9 +103,11 @@ jobs:
           
           .\bore.exe local 3389 --to bore.pub
 
-      # 9. FINAL BACKUP
+      # ---------------------------------------------------
+      # 9. FINAL BACKUP (Safety Net)
+      # ---------------------------------------------------
       - name: Final Backup
         if: always()
         run: |
-          Write-Host "Final Backup..."
+          Write-Host "Session Ending... performing Final Sync..."
           rclone sync "C:\Users\RDP\Desktop\Work" megaremote:RDP_Backup/Work --config "C:\rclone.conf"
