@@ -6,7 +6,7 @@ import subprocess
 REMOTE_NAME = "megaremote"
 CLOUD_FOLDER = "RDP_Backup/Work"
 LOCAL_FOLDER = r"C:\Users\RDP\Desktop\Work"
-CONFIG_PATH = r"C:\rclone.conf"  # Points to our forced config file
+CONFIG_PATH = r"C:\rclone.conf"  # Points to the forced config file
 
 # Wait 2 seconds to ensure file is fully saved
 DEBOUNCE_SECONDS = 2
