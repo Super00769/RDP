@@ -1,4 +1,4 @@
-name: RDP (Manual Sync Button + Fix)
+name: RDP (Manual Sync Button + Path Fix)
 
 on: workflow_dispatch
 
@@ -9,15 +9,14 @@ jobs:
 
     steps:
       # ---------------------------------------------------
-      # 1. SETUP RCLONE (*** FIXED ***)
+      # 1. SETUP RCLONE (Force Config Path)
       # ---------------------------------------------------
       - name: Setup Rclone & Login
         run: |
           choco install rclone
-          # We force the config to be saved directly at C:\rclone.conf
-          # This fixes the "File not found" error permanently.
+          # Force config creation at C:\rclone.conf
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}" --config "C:\rclone.conf"
-          Write-Host "Config created successfully at C:\rclone.conf"
+          Write-Host "Config created at C:\rclone.conf"
 
       # ---------------------------------------------------
       # 2. CREATE USER "RDP"
@@ -31,19 +30,23 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
 
       # ---------------------------------------------------
-      # 3. RESTORE DATA & PREPARE SCRIPTS
+      # 3. PREPARE FILES & FIX DESKTOP PATH
       # ---------------------------------------------------
-      - name: Prepare Files
+      - name: Prepare Files & Desktop
         continue-on-error: true
         run: |
-          # Move python script to C:\ so it is easy to find
+          # 1. Move python script to C:\ root
           Copy-Item "autosave.py" -Destination "C:\autosave.py"
           
-          # Restore Data to RDP Desktop
+          # 2. FORCE Create the RDP User's Desktop folder
+          # This fixes the "Could not find part of the path" error
+          $desktopPath = "C:\Users\RDP\Desktop"
           $workPath = "C:\Users\RDP\Desktop\Work"
+          
+          New-Item -ItemType Directory -Force -Path $desktopPath
           New-Item -ItemType Directory -Force -Path $workPath
           
-          # Use the shared config for restore
+          # 3. Restore Data using the shared config
           rclone copy megaremote:RDP_Backup/Work $workPath --config "C:\rclone.conf"
 
       # ---------------------------------------------------
@@ -51,6 +54,7 @@ jobs:
       # ---------------------------------------------------
       - name: Create Sync Shortcut
         run: |
+          # Now that we forced the folder to exist, this will work
           $content = "python C:\autosave.py"
           Set-Content -Path "C:\Users\RDP\Desktop\START_SYNC.bat" -Value $content
           Write-Host "Shortcut created on Desktop."
@@ -76,6 +80,8 @@ jobs:
         run: |
           choco install googlechrome -y --no-progress
           choco install winrar -y --no-progress
+          
+          # Create Chrome Shortcut
           $WshShell = New-Object -comObject WScript.Shell
           $ChromeLnk = $WshShell.CreateShortcut("C:\Users\RDP\Desktop\Chrome.lnk")
           $ChromeLnk.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
@@ -104,10 +110,11 @@ jobs:
           .\bore.exe local 3389 --to bore.pub
 
       # ---------------------------------------------------
-      # 9. FINAL BACKUP (Safety Net)
+      # 9. FINAL BACKUP
       # ---------------------------------------------------
       - name: Final Backup
         if: always()
         run: |
-          Write-Host "Session Ending... performing Final Sync..."
+          Write-Host "Performing Final Sync..."
+          # Uses the forced config path
           rclone sync "C:\Users\RDP\Desktop\Work" megaremote:RDP_Backup/Work --config "C:\rclone.conf"
