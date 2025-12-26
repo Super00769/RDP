@@ -6,7 +6,7 @@ import subprocess
 REMOTE_NAME = "megaremote"
 CLOUD_FOLDER = "RDP_Backup/Work"
 LOCAL_FOLDER = r"C:\Users\RDP\Desktop\Work"
-CONFIG_PATH = r"C:\rclone.conf"  # Points to the file we created in Step 1
+CONFIG_PATH = r"C:\rclone.conf"  # Points to our forced config file
 
 # Wait 2 seconds to ensure file is fully saved
 DEBOUNCE_SECONDS = 2
@@ -27,7 +27,7 @@ def get_folder_state(folder):
 def backup():
     print(f"⚡ [Sync] Change detected! Mirroring to Mega...")
     
-    # Use the shared config file
+    # Sync using the specific config file
     command = f'rclone sync "{LOCAL_FOLDER}" {REMOTE_NAME}:{CLOUD_FOLDER} --transfers=8 --config "{CONFIG_PATH}"'
     
     try:
