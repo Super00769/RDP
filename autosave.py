@@ -6,10 +6,10 @@ import subprocess
 REMOTE_NAME = "megaremote"
 CLOUD_FOLDER = "RDP_Backup/Work"
 
-# *** FIXED PATH: This matches your screenshot EXACTLY ***
+# *** FIXED PATH: This matches your actual desktop ***
 LOCAL_FOLDER = r"C:\Users\RDP\Desktop\Work"
 
-# Wait 2 seconds to ensure file is fully saved
+# Wait 2 seconds after a change to let the file finish saving
 DEBOUNCE_SECONDS = 2
 
 def get_folder_state(folder):
