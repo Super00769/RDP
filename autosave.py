@@ -6,10 +6,10 @@ import subprocess
 REMOTE_NAME = "megaremote"
 CLOUD_FOLDER = "RDP_Backup/Work"
 
-# *** FIXED PATH: Pointing EXACTLY to where you are ***
+# *** FIXED PATH: This matches your screenshot EXACTLY ***
 LOCAL_FOLDER = r"C:\Users\RDP\Desktop\Work"
 
-# Wait 2 seconds after a change to let the file finish saving
+# Wait 2 seconds to ensure file is fully saved
 DEBOUNCE_SECONDS = 2
 
 def get_folder_state(folder):
@@ -28,7 +28,7 @@ def get_folder_state(folder):
 def backup():
     print(f"⚡ [Sync] Change detected! Mirroring to Mega...")
     
-    # SYNC COMMAND
+    # Mirror command
     command = f'rclone sync "{LOCAL_FOLDER}" {REMOTE_NAME}:{CLOUD_FOLDER} --transfers=8'
     
     try:
