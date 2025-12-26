@@ -72,37 +72,16 @@ jobs:
       - name: Download Paper 1.21.11 & Plugins
         run: |
           # Auto-Fetch Latest Paper Build for 1.21.11
-          VERSION="1.21.1" # (Note: 1.21.11 is Bedrock version. For Java server we use 1.21.1 or 1.21.3)
-          # Paper handles Bedrock players via Geyser, so 1.21.1 is correct for the server jar.
-          
-          BUILD=$(curl -s https://api.papermc.io/v2/projects/paper/versions/1.21.1/builds | jq '.builds[-1].build')
-          echo "Downloading Paper 1.21.1 Build $BUILD..."
-          wget -O server/paper.jar "https://api.papermc.io/v2/projects/paper/versions/1.21.1/builds/$BUILD/downloads/paper-1.21.1-$BUILD.jar"
+          VERSION="1.21.11" 
+          BUILD=$(curl -s https://api.papermc.io/v2/projects/paper/versions/$VERSION | jq '.builds[-1].build')
+          echo "Downloading Paper $VERSION Build $BUILD..."
+          wget -O server/paper.jar "https://api.papermc.io/v2/projects/paper/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
           
           # Copy Plugins from your Repo to Server
-          cp plugins/*.jar server/plugins/
+          # This command automatically copies your manual config.yml too!
+          cp -r plugins/* server/plugins/
 
-      # 6. FIX AUTHME (The "Illegal Characters" Fix)
-      - name: 🔧 Fix AuthMe Config
-        run: |
-          # Only run this if AuthMe was uploaded
-          if ls server/plugins/AuthMe*.jar 1> /dev/null 2>&1; then
-            echo "AuthMe detected! Patching config to allow Bedrock players..."
-            mkdir -p server/plugins/AuthMe
-            
-            # Extract default config
-            unzip -p server/plugins/AuthMe*.jar config.yml > server/plugins/AuthMe/config.yml
-            
-            # CHANGE THE RULE: Allow dots (.), spaces, and underscores
-            sed -i 's/allowedNicknameCharacters: .*/allowedNicknameCharacters: "[a-zA-Z0-9_. ]*"/' server/plugins/AuthMe/config.yml
-            
-            # Enable "Teleport Unauthed To Spawn" to fix your wall suffocation glitch
-            sed -i 's/teleportUnAuthedToSpawn: false/teleportUnAuthedToSpawn: true/' server/plugins/AuthMe/config.yml
-            
-            echo "✅ AuthMe Config Patched!"
-          fi
-
-      # 7. Start the Server
+      # 6. Start the Server
       - name: 🟢 Start Server
         env:
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
@@ -115,7 +94,7 @@ jobs:
           cd server
           java -Xms6G -Xmx6G -jar paper.jar nogui
 
-      # 8. Auto-Backup (Runs on Stop/Crash)
+      # 7. Auto-Backup (Runs on Stop/Crash)
       - name: 📤 Backup to MEGA
         if: always() # IMPORTANT: Runs even if you cancel the workflow
         run: |
