@@ -68,17 +68,31 @@ jobs:
           echo "motd=GitHub Actions Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
 
-      # 5. Download Core & Plugins
-      - name: Download Paper 1.21.11 & Plugins
+      # 5. Download Core & Plugins (Smart Fallback Mode)
+      - name: Download Paper (Smart Version Check) & Plugins
         run: |
-          # Auto-Fetch Latest Paper Build for 1.21.11
-          VERSION="1.21.11" 
-          BUILD=$(curl -s https://api.papermc.io/v2/projects/paper/versions/$VERSION | jq '.builds[-1].build')
-          echo "Downloading Paper $VERSION Build $BUILD..."
-          wget -O server/paper.jar "https://api.papermc.io/v2/projects/paper/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
+          TARGET_VERSION="1.21.11"
+          PROJECT_URL="https://api.papermc.io/v2/projects/paper"
+          
+          echo "🔍 Checking if version $TARGET_VERSION exists..."
+          
+          # Check if the target version is in the list of available versions
+          if curl -s $PROJECT_URL | jq -e ".versions | index(\"$TARGET_VERSION\")" > /dev/null; then
+            VERSION="$TARGET_VERSION"
+            echo "✅ Success! Version $VERSION found."
+          else
+            # If not found, grab the very last version in the list (The Absolute Latest)
+            VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
+            echo "⚠️ Version $TARGET_VERSION not found. Falling back to latest available: $VERSION"
+          fi
+          
+          # Now fetch the latest build for whichever version we picked
+          BUILD=$(curl -s $PROJECT_URL/versions/$VERSION | jq '.builds[-1]')
+          
+          echo "⬇️ Downloading Paper $VERSION Build $BUILD..."
+          wget -O server/paper.jar "$PROJECT_URL/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
           
           # Copy Plugins from your Repo to Server
-          # This command automatically copies your manual config.yml too!
           cp -r plugins/* server/plugins/
 
       # 6. Start the Server
