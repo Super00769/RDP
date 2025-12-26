@@ -1,104 +1,59 @@
-name: RDP (Public Desktop Fix)
+name: Organized Server 1.21.4
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 
 jobs:
-  secure-rdp:
-    runs-on: windows-latest
-    timeout-minutes: 3600
-
+  run-server:
+    runs-on: ubuntu-latest
+    
     steps:
-      # 1. DOWNLOAD REPO
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. SETUP RCLONE
-      - name: Setup Rclone
-        run: |
-          choco install rclone -y
-          # Create Shared Config
-          rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}" --config "C:\rclone.conf"
-
-      # 3. CREATE USER "RDP"
-      - name: Create RDP User
-        run: |
-          $password = "${{ secrets.RDP_PASS }}"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-
-      # 4. PREPARE FILES (*** PUBLIC DESKTOP FIX ***)
-      - name: Prepare Files & Desktop
-        run: |
-          # A. Use Public Desktop (Visible to ALL users)
-          $publicDesktop = "C:\Users\Public\Desktop"
-          $workPath = "C:\Users\Public\Desktop\Work"
-
-          # B. Find autosave.py and move to C:\
-          $script = Get-ChildItem -Path "${{ github.workspace }}" -Filter "autosave.py" -Recurse | Select-Object -First 1
-          if ($script) {
-              Copy-Item -Path $script.FullName -Destination "C:\autosave.py" -Force
-              Write-Host "✅ Found and moved autosave.py"
-          }
-
-          # C. Restore Data to Public Desktop
-          New-Item -ItemType Directory -Force -Path $workPath
-          rclone copy megaremote:RDP_Backup/Work $workPath --config "C:\rclone.conf"
-
-      # 5. CREATE SYNC BUTTON (On Public Desktop)
-      - name: Create Sync Shortcut
-        run: |
-          $content = "python C:\autosave.py"
-          # This puts the button on EVERYONE'S screen
-          Set-Content -Path "C:\Users\Public\Desktop\START_SYNC.bat" -Value $content
-
-      # 6. SYSTEM SETTINGS & APPS
-      - name: System & Apps
-        run: |
-          Set-Service -Name Audiosrv -StartupType Automatic
-          Start-Service -Name Audiosrv
-          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fDisableAudioCapture" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxDisconnectionTime" -Value 0 -Force
-          
-          # Allow RDP
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          
-          # Firewall
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-
-          # Apps
-          choco install googlechrome -y --no-progress
-          choco install winrar -y --no-progress
-          
-          # Chrome Shortcut on Public Desktop
-          $WshShell = New-Object -comObject WScript.Shell
-          $ChromeLnk = $WshShell.CreateShortcut("C:\Users\Public\Desktop\Chrome.lnk")
-          $ChromeLnk.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-          $ChromeLnk.Save()
-
-      # 7. PYTHON & TUNNEL
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
         with:
-          python-version: '3.10' 
+          distribution: 'temurin'
+          java-version: '21'
 
-      - name: Start RDP Tunnel
+      - name: Install Playit & JQ
         run: |
-          Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
-          Expand-Archive bore.zip -DestinationPath .
-          
-          Write-Host "✅ RDP READY"
-          Write-Host "👤 User: RDP"
-          Write-Host "🔑 Pass: ${{ secrets.RDP_PASS }}"
-          
-          .\bore.exe local 3389 --to bore.pub
+          curl -SsL https://playit-cloud.github.io/ppa/key.gpg | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/playit.gpg >/dev/null
+          echo "deb [signed-by=/etc/apt/trusted.gpg.d/playit.gpg] https://playit-cloud.github.io/ppa/data ./" | sudo tee /etc/apt/sources.list.d/playit-cloud.list
+          sudo apt-get update
+          sudo apt-get install playit jq
 
-      # 8. FINAL BACKUP (From Public Desktop)
-      - name: Final Backup
-        if: always()
+      - name: Setup Server Folders
         run: |
-          Write-Host "Performing Final Sync..."
-          rclone sync "C:\Users\Public\Desktop\Work" megaremote:RDP_Backup/Work --config "C:\rclone.conf"
+          # Create the folder where worlds will live
+          mkdir -p server/minecraft-worlds
+          mkdir -p server/plugins
+
+          # Tell the server: "Put standard worlds inside the minecraft-worlds folder"
+          echo "settings:" > server/bukkit.yml
+          echo "  world-container: minecraft-worlds" >> server/bukkit.yml
+          
+          # Basic Configs
+          echo "server-port=25565" > server/server.properties
+          echo "online-mode=false" >> server/server.properties
+          echo "eula=true" > server/eula.txt
+
+      - name: Download Paper 1.21.4 (Auto-Latest)
+        run: |
+          VERSION="1.21.4"
+          BUILD=$(curl -s https://api.papermc.io/v2/projects/paper/versions/$VERSION | jq '.builds[-1]')
+          echo "Downloading Paper $VERSION Build $BUILD..."
+          wget -O server/paper.jar "https://api.papermc.io/v2/projects/paper/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
+
+      - name: Copy Plugins
+        run: cp plugins/*.jar server/plugins/
+
+      - name: Start Server
+        env:
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
+        run: |
+          playit --secret $PLAYIT_SECRET &
+          sleep 10
+          cd server
+          java -Xms6G -Xmx6G -jar paper.jar nogui
