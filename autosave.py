@@ -6,9 +6,9 @@ import subprocess
 REMOTE_NAME = "megaremote"
 CLOUD_FOLDER = "RDP_Backup/Work"
 LOCAL_FOLDER = r"C:\Users\RDP\Desktop\Work"
-CONFIG_PATH = r"C:\rclone.conf"  # Points to the forced config file
+CONFIG_PATH = r"C:\rclone.conf"  # Added this so the Sync Button works
 
-# Wait 2 seconds to ensure file is fully saved
+# Wait 2 seconds after a change to let the file finish saving
 DEBOUNCE_SECONDS = 2
 
 def get_folder_state(folder):
@@ -27,25 +27,23 @@ def get_folder_state(folder):
 def backup():
     print(f"⚡ [Sync] Change detected! Mirroring to Mega...")
     
-    # Sync using the specific config file
+    # Updated command to use the Shared Config file
     command = f'rclone sync "{LOCAL_FOLDER}" {REMOTE_NAME}:{CLOUD_FOLDER} --transfers=8 --config "{CONFIG_PATH}"'
     
     try:
         subprocess.run(command, shell=True, check=True)
-        print("✅ [Sync] Success! Mega updated.")
+        print("✅ [Sync] Success!")
     except Exception as e:
-        print(f"❌ [Sync] Error: {e}")
+        print(f"❌ [Sync] Failed: {e}")
 
 def main():
-    print("--- 👁️ SMART SYNC MONITOR (MANUAL MODE) ---")
+    print("--- 👁️ SMART SYNC MONITOR STARTED ---")
     print(f"Watching: {LOCAL_FOLDER}")
-    print("Keep this window OPEN to sync files.")
     
+    # Check if config exists before starting
     if not os.path.exists(CONFIG_PATH):
-        print(f"⚠️ ERROR: Config file not found at {CONFIG_PATH}")
-        time.sleep(10)
-        return
-
+        print(f"⚠️ Warning: Config not found at {CONFIG_PATH}")
+    
     last_state = get_folder_state(LOCAL_FOLDER)
     
     while True:
