@@ -1,69 +1,127 @@
-name: RDP with Mega + Bore
+name: RDP (User RDP + Mega Save)
 
 on: workflow_dispatch
 
 jobs:
-  build:
+  secure-rdp:
     runs-on: windows-latest
-    
+    timeout-minutes: 3600
+
     steps:
-      # 1. LOGIN TO MEGA (Lazy Method)
+      # ---------------------------------------------------
+      # 1. SETUP RCLONE (Login to Mega)
+      # ---------------------------------------------------
       - name: Setup Rclone & Login
         run: |
           choco install rclone
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}"
           Write-Host "Logged into Mega successfully!"
 
-      # 2. RESTORE DATA (*** FIXED ***)
-      # "continue-on-error: true" tells GitHub: "If this fails (because it's the first run), just keep going!"
+      # ---------------------------------------------------
+      # 2. CREATE USER "RDP" (Securely)
+      # ---------------------------------------------------
+      - name: Create RDP User
+        run: |
+          # We use the Secret Password so it is HIDDEN in logs
+          $password = "${{ secrets.RDP_PASS }}"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          
+          # Create the user
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          
+          # Make them an Admin so they can install apps/change settings
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+          
+          Write-Host "User 'RDP' created. Password is hidden."
+
+      # ---------------------------------------------------
+      # 3. RESTORE DATA (To RDP Desktop)
+      # ---------------------------------------------------
       - name: Restore Data
         continue-on-error: true
         run: |
-          New-Item -ItemType Directory -Force -Path .\Work
-          Write-Host "Attempting to restore backup..."
-          rclone copy megaremote:RDP_Backup/Work .\Work
+          # We restore specifically to the new User's Desktop
+          $workPath = "C:\Users\RDP\Desktop\Work"
+          
+          New-Item -ItemType Directory -Force -Path $workPath
+          Write-Host "Restoring backup to: $workPath"
+          
+          # Copy from Mega
+          rclone copy megaremote:RDP_Backup/Work $workPath
 
-      # 3. SETUP PYTHON
+      # ---------------------------------------------------
+      # 4. CONFIGURE SYSTEM & AUDIO FIXES
+      # ---------------------------------------------------
+      - name: Configure System
+        run: |
+          # Audio Service
+          Set-Service -Name Audiosrv -StartupType Automatic
+          Start-Service -Name Audiosrv
+          
+          # Registry Fixes for RDP Stability
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fDisableAudioCapture" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxDisconnectionTime" -Value 0 -Force
+
+          # Enable RDP Connections
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+
+          # Firewall
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+
+      # ---------------------------------------------------
+      # 5. INSTALL APPS (Chrome + WinRAR)
+      # ---------------------------------------------------
+      - name: Install Apps
+        run: |
+          choco install googlechrome -y --no-progress
+          choco install winrar -y --no-progress
+          
+          # Create Chrome Shortcut on RDP User's Desktop
+          $WshShell = New-Object -comObject WScript.Shell
+          $ChromeLnk = $WshShell.CreateShortcut("C:\Users\RDP\Desktop\Chrome.lnk")
+          $ChromeLnk.TargetPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+          $ChromeLnk.Save()
+
+      # ---------------------------------------------------
+      # 6. START AUTO-SAVE (Background)
+      # ---------------------------------------------------
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
 
-      # 4. START AUTO-SAVE (Background)
-      - name: Start Auto-Save Loop
+      - name: Launch Auto-Save
         run: |
-          # Make sure autosave.py is in your repo files!
+          # Starts the python script in a hidden window
           Start-Process python -ArgumentList "autosave.py" -WindowStyle Hidden
-          Write-Host "Auto-save script is running in the background."
+          Write-Host "Auto-save script started. Watching C:\Users\RDP\Desktop\Work"
 
-      # 5. SETUP USER & START BORE
-      - name: Setup User & Bore
+      # ---------------------------------------------------
+      # 7. START BORE TUNNEL
+      # ---------------------------------------------------
+      - name: Start RDP Tunnel
         run: |
-          # Set password
-          net user runneradmin Super@2025
-          
-          # Enable RDP
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
-          
-          # Download Bore
           Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
           Expand-Archive bore.zip -DestinationPath .
           
           Write-Host "---------------------------------------------------"
-          Write-Host "✅ RDP IS READY!"
-          Write-Host "👤 Username: runneradmin"
-          Write-Host "🔑 Password: Super@2025"
-          Write-Host "👇 CONNECT USING THE ADDRESS BELOW 👇"
+          Write-Host "✅ RDP IS READY"
+          Write-Host "👤 User: RDP"
+          # The password will appear as '***' in the logs (Secure)
+          Write-Host "🔑 Pass: ${{ secrets.RDP_PASS }}"
           Write-Host "---------------------------------------------------"
           
-          # Start Bore Tunnel
+          # Start the connection
           .\bore.exe local 3389 --to bore.pub
 
-      # 6. FINAL BACKUP (Runs even if job fails/cancels)
+      # ---------------------------------------------------
+      # 8. FINAL BACKUP (Safety Net)
+      # ---------------------------------------------------
       - name: Final Backup
         if: always()
         run: |
-          Write-Host "Session Ending! Saving data..."
-          rclone copy .\Work megaremote:RDP_Backup/Work
+          Write-Host "Saving Data from RDP Desktop..."
+          rclone copy "C:\Users\RDP\Desktop\Work" megaremote:RDP_Backup/Work
