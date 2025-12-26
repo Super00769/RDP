@@ -1,69 +1,70 @@
-name: AppMake (Build EXE + Fast RDP)
+name: RDP with Mega Auto-Save
 
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
-  build-and-rdp:
+  build:
     runs-on: windows-latest
-    timeout-minutes: 3600
-
+    
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
-
-      - name: Configure RDP Settings
+      # 1. SETUP RCLONE & LOGIN AUTOMATICALLY
+      # This uses your Secrets to log into Mega instantly
+      - name: Setup Rclone & Login
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+          choco install rclone
+          # Create the config using your Email/Pass secrets
+          rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}"
+          Write-Host "Rclone is set up and logged in!"
 
-      - name: Create RDP User
+      # 2. RESTORE DATA (Load Game)
+      # Checks Mega for existing files and puts them in the 'Work' folder
+      - name: Restore Data
         run: |
-          $p = "SuperTool@2025"
-          $securePass = ConvertTo-SecureString $p -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          echo "PASS=$p" >> $env:GITHUB_ENV
+          Write-Host "Checking for existing backup on Mega..."
+          # Create the local Work folder
+          New-Item -ItemType Directory -Force -Path .\Work
+          
+          # Try to download. If it fails (first run), just print a message and continue.
+          rclone copy megaremote:RDP_Backup/Work .\Work || Write-Host "No backup found yet (First Run). Starting fresh."
+          
+          Write-Host "Restore step complete."
 
-      - name: Build Standalone SuperTool EXE
+      # 3. INSTALL PYTHON
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' 
+
+      # 4. START AUTO-SAVE SCRIPT
+      # Runs autosave.py in the background so it doesn't block the RDP
+      - name: Start Auto-Save Loop
         run: |
-          # --- FIXED LINE: ADDED 'cryptography' ---
-          pip install pyinstaller customtkinter telethon opencv-python-headless pillow requests cryptg cryptography
-          
-          # Build with the logo baked in permanently
-          pyinstaller --noconfirm --onefile --windowed --clean `
-            --name "SuperTool" `
-            --icon "logo.ico" `
-            --add-data "logo.ico;." `
-            --collect-all customtkinter `
-            "SuperTool.py"
+          Write-Host "Launching Auto-Save script..."
+          # Start-Process runs it in a separate window/process
+          Start-Process python -ArgumentList "autosave.py" -WindowStyle Hidden
 
-          # Move finished EXE and a copy of the logo to the Desktop
-          if (Test-Path "dist\SuperTool.exe") {
-              Move-Item -Path "dist\SuperTool.exe" -Destination "C:\Users\Public\Desktop\SuperTool.exe"
-              Copy-Item -Path "logo.ico" -Destination "C:\Users\Public\Desktop\logo.ico"
-          }
-
-      - name: Start Bore & Show Login
+      # 5. START RDP (*** PASTE YOUR CODE HERE ***)
+      - name: Start RDP
         run: |
-          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
-          Expand-Archive bore.zip -DestinationPath .
-          Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "bore.log" -PassThru
+          # ---------------------------------------------------
+          # PASTE YOUR NGROK / CLOUDFLARED / RDP CODE HERE
+          # ---------------------------------------------------
           
-          $address = $null
-          while (!$address) {
-              if (Test-Path "bore.log") {
-                  $match = Get-Content "bore.log" | Select-String "listening at (bore.pub:[0-9]+)"
-                  if ($match) { $address = $match.Matches.Groups[1].Value }
-              }
-              Start-Sleep -Seconds 2
-          }
+          # Example (Uncomment and edit if you use Ngrok):
+          # invoke-webrequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+          # Expand-Archive ngrok.zip
+          # .\ngrok\ngrok.exe tcp 3389
           
-          Write-Host "`n=============================="
-          Write-Host "RDP ADDRESS: $address"
-          Write-Host "USERNAME: RDP"
-          Write-Host "PASSWORD: ${{ env.PASS }}"
-          Write-Host "==============================`n"
-          
-          while ($true) { Start-Sleep -Seconds 300 }
+          # IMPORTANT:
+          # Your RDP script usually ends with a loop (like 'loop.bat').
+          # Make sure that loop is here so the workflow stays open!
+          cmd /c loop.bat
+
+      # 6. FINAL EMERGENCY BACKUP
+      # This runs automatically if the 6-hour limit is hit or you cancel the workflow
+      - name: Final Backup
+        if: always()
+        run: |
+          Write-Host "Session Ending! Performing final backup..."
+          rclone copy .\Work megaremote:RDP_Backup/Work
+          Write-Host "Final Backup Complete. Safe to close."
