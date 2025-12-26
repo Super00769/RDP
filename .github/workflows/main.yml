@@ -55,12 +55,16 @@ jobs:
             rm server/backup.zip
           fi
 
-      # 4. Setup Server Logic (With Seed Support)
+      # 4. Setup Server Logic (Privacy & Seed)
       - name: Configure Server & Folders
         run: |
           # Force worlds into the 'minecraft-worlds' folder
           echo "settings:" > server/bukkit.yml
           echo "  world-container: minecraft-worlds" >> server/bukkit.yml
+          
+          # PRIVACY: Disable command logging (Hides /msg and /login from GitHub Logs)
+          echo "commands:" > server/spigot.yml
+          echo "  log: false" >> server/spigot.yml
           
           # Server Properties (Cracked + Optimized)
           echo "server-port=25565" > server/server.properties
@@ -68,9 +72,7 @@ jobs:
           echo "motd=GitHub Actions Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
           
-          # ---------------------------------------------------------
           # SEED LOGIC: If seed.txt exists, add it to properties!
-          # ---------------------------------------------------------
           if [ -f seed.txt ]; then
              SEED=$(cat seed.txt)
              echo "✅ Custom Seed Found: $SEED"
@@ -104,7 +106,6 @@ jobs:
           wget -O server/paper.jar "$PROJECT_URL/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
           
           # Copy Plugins from your Repo to Server
-          # Note: This overwrites old jars but keeps your Data folders (restored from backup) safe!
           cp -r plugins/* server/plugins/
 
       # 6. Start the Server (With 5h 30m Safety Timer)
@@ -129,8 +130,7 @@ jobs:
           echo "Server stopped. Starting backup..."
           cd server
           
-          # Zip World AND Plugins (Excluding .jar files to save space)
-          # This saves your AuthMe passwords, Inventory, and Configs!
+          # Zip World AND Plugins (Excluding .jar files)
           zip -r backup.zip minecraft-worlds plugins -x "*.jar"
           
           echo "Uploading to MEGA..."
