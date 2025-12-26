@@ -11,42 +11,43 @@ jobs:
       - name: Setup Rclone & Login
         run: |
           choco install rclone
-          # Logs in using your secrets
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}"
-          Write-Host "Logged into Mega!"
+          Write-Host "Logged into Mega successfully!"
 
-      # 2. RESTORE DATA
+      # 2. RESTORE DATA (*** FIXED ***)
+      # "continue-on-error: true" tells GitHub: "If this fails (because it's the first run), just keep going!"
       - name: Restore Data
+        continue-on-error: true
         run: |
           New-Item -ItemType Directory -Force -Path .\Work
-          # Try to download backup. If not found, ignore error.
-          rclone copy megaremote:RDP_Backup/Work .\Work || Write-Host "No backup found (First Run)."
+          Write-Host "Attempting to restore backup..."
+          rclone copy megaremote:RDP_Backup/Work .\Work
 
-      # 3. SETUP PYTHON & AUTOSAVE
+      # 3. SETUP PYTHON
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
 
+      # 4. START AUTO-SAVE (Background)
       - name: Start Auto-Save Loop
         run: |
-          # Ensure autosave.py is in your repo!
+          # Make sure autosave.py is in your repo files!
           Start-Process python -ArgumentList "autosave.py" -WindowStyle Hidden
-          Write-Host "Auto-save is running in the background."
+          Write-Host "Auto-save script is running in the background."
 
-      # 4. SETUP USER & INSTALL BORE
+      # 5. SETUP USER & START BORE
       - name: Setup User & Bore
         run: |
-          # Set the password to Super@2025
+          # Set password
           net user runneradmin Super@2025
           
-          # Enable RDP Access
+          # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
           
           # Download Bore
-          Write-Host "Downloading Bore..."
           Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
           Expand-Archive bore.zip -DestinationPath .
           
@@ -57,10 +58,10 @@ jobs:
           Write-Host "👇 CONNECT USING THE ADDRESS BELOW 👇"
           Write-Host "---------------------------------------------------"
           
-          # Start Bore (This keeps the machine alive)
+          # Start Bore Tunnel
           .\bore.exe local 3389 --to bore.pub
 
-      # 5. FINAL BACKUP (Runs if Bore crashes or time limit ends)
+      # 6. FINAL BACKUP (Runs even if job fails/cancels)
       - name: Final Backup
         if: always()
         run: |
