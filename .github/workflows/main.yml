@@ -1,4 +1,4 @@
-name: RDP (Manual Sync Button + Path Fix)
+name: RDP (Hang Fixed + Path Fixed)
 
 on: workflow_dispatch
 
@@ -9,11 +9,13 @@ jobs:
 
     steps:
       # ---------------------------------------------------
-      # 1. SETUP RCLONE (Force Config Path)
+      # 1. SETUP RCLONE (*** HANG FIXED ***)
       # ---------------------------------------------------
       - name: Setup Rclone & Login
         run: |
-          choco install rclone
+          # Added -y so it doesn't get stuck waiting for confirmation
+          choco install rclone -y
+          
           # Force config creation at C:\rclone.conf
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}" --config "C:\rclone.conf"
           Write-Host "Config created at C:\rclone.conf"
