@@ -1,4 +1,4 @@
-name: RDP with Mega Auto-Save
+name: RDP with Mega + Bore
 
 on: workflow_dispatch
 
@@ -7,64 +7,62 @@ jobs:
     runs-on: windows-latest
     
     steps:
-      # 1. SETUP RCLONE & LOGIN AUTOMATICALLY
-      # This uses your Secrets to log into Mega instantly
+      # 1. LOGIN TO MEGA (Lazy Method)
       - name: Setup Rclone & Login
         run: |
           choco install rclone
-          # Create the config using your Email/Pass secrets
+          # Logs in using your secrets
           rclone config create megaremote mega user "${{ secrets.MEGA_EMAIL }}" pass "${{ secrets.MEGA_PASS }}"
-          Write-Host "Rclone is set up and logged in!"
+          Write-Host "Logged into Mega!"
 
-      # 2. RESTORE DATA (Load Game)
-      # Checks Mega for existing files and puts them in the 'Work' folder
+      # 2. RESTORE DATA
       - name: Restore Data
         run: |
-          Write-Host "Checking for existing backup on Mega..."
-          # Create the local Work folder
           New-Item -ItemType Directory -Force -Path .\Work
-          
-          # Try to download. If it fails (first run), just print a message and continue.
-          rclone copy megaremote:RDP_Backup/Work .\Work || Write-Host "No backup found yet (First Run). Starting fresh."
-          
-          Write-Host "Restore step complete."
+          # Try to download backup. If not found, ignore error.
+          rclone copy megaremote:RDP_Backup/Work .\Work || Write-Host "No backup found (First Run)."
 
-      # 3. INSTALL PYTHON
+      # 3. SETUP PYTHON & AUTOSAVE
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10' 
 
-      # 4. START AUTO-SAVE SCRIPT
-      # Runs autosave.py in the background so it doesn't block the RDP
       - name: Start Auto-Save Loop
         run: |
-          Write-Host "Launching Auto-Save script..."
-          # Start-Process runs it in a separate window/process
+          # Ensure autosave.py is in your repo!
           Start-Process python -ArgumentList "autosave.py" -WindowStyle Hidden
+          Write-Host "Auto-save is running in the background."
 
-      # 5. START RDP (*** PASTE YOUR CODE HERE ***)
-      - name: Start RDP
+      # 4. SETUP USER & INSTALL BORE
+      - name: Setup User & Bore
         run: |
-          # ---------------------------------------------------
-          # PASTE YOUR NGROK / CLOUDFLARED / RDP CODE HERE
-          # ---------------------------------------------------
+          # Set the password to Super@2025
+          net user runneradmin Super@2025
           
-          # Example (Uncomment and edit if you use Ngrok):
-          # invoke-webrequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
-          # Expand-Archive ngrok.zip
-          # .\ngrok\ngrok.exe tcp 3389
+          # Enable RDP Access
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
           
-          # IMPORTANT:
-          # Your RDP script usually ends with a loop (like 'loop.bat').
-          # Make sure that loop is here so the workflow stays open!
-          cmd /c loop.bat
+          # Download Bore
+          Write-Host "Downloading Bore..."
+          Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath .
+          
+          Write-Host "---------------------------------------------------"
+          Write-Host "✅ RDP IS READY!"
+          Write-Host "👤 Username: runneradmin"
+          Write-Host "🔑 Password: Super@2025"
+          Write-Host "👇 CONNECT USING THE ADDRESS BELOW 👇"
+          Write-Host "---------------------------------------------------"
+          
+          # Start Bore (This keeps the machine alive)
+          .\bore.exe local 3389 --to bore.pub
 
-      # 6. FINAL EMERGENCY BACKUP
-      # This runs automatically if the 6-hour limit is hit or you cancel the workflow
+      # 5. FINAL BACKUP (Runs if Bore crashes or time limit ends)
       - name: Final Backup
         if: always()
         run: |
-          Write-Host "Session Ending! Performing final backup..."
+          Write-Host "Session Ending! Saving data..."
           rclone copy .\Work megaremote:RDP_Backup/Work
-          Write-Host "Final Backup Complete. Safe to close."
