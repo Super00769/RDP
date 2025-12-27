@@ -20,151 +20,147 @@ jobs:
 
       - name: Install Dependencies (Playit, Rclone, JQ)
         run: |
-          # Install Playit
           curl -SsL https://playit-cloud.github.io/ppa/key.gpg | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/playit.gpg >/dev/null
           echo "deb [signed-by=/etc/apt/trusted.gpg.d/playit.gpg] https://playit-cloud.github.io/ppa/data ./" | sudo tee /etc/apt/sources.list.d/playit-cloud.list
           sudo apt-get update
           sudo apt-get install playit jq zip unzip
-          
-          # Install Rclone (for Google Drive backup)
           sudo -v ; curl https://rclone.org/install.sh | sudo bash
 
-      # 2. Connect to Google Drive (Using Secret Config)
+      # 2. Connect to Google Drive
       - name: Configure Google Drive
         env:
           GDRIVE_CONFIG: ${{ secrets.GDRIVE_CONFIG }}
         run: |
-          # Create the config folder
           mkdir -p ~/.config/rclone
-          # Write the secret config to the file
           echo "$GDRIVE_CONFIG" > ~/.config/rclone/rclone.conf
           echo "✅ Google Drive Configured!"
 
-      # 3. Restore World & Plugins (If backup exists)
+      # 3. Restore Backup (And Set Flag)
       - name: 📥 Restore Backup
         run: |
           mkdir -p server/minecraft-worlds
           mkdir -p server/plugins
           
           echo "Checking Google Drive for previous backup..."
-          
-          # Try to download from 'MinecraftServer' folder in Drive
           rclone copy gdrive:MinecraftServer/backup.zip server/ || echo "No backup found. Starting Fresh!"
           
           if [ -f server/backup.zip ]; then
             echo "Backup found! Unzipping World & Plugins..."
             unzip -o server/backup.zip -d server/
             rm server/backup.zip
+            
+            # CRITICAL: Create a 'flag' file to tell the next step we are NOT new
+            touch server/BACKUP_WAS_RESTORED
           fi
 
-      # 4. Setup Server Logic (Privacy & Seed)
+      # 4. Setup Server Logic (Privacy & Secret Seed)
       - name: Configure Server & Folders
+        env:
+          # Import the SEED secret here
+          SEED_SECRET: ${{ secrets.SEED }}
         run: |
-          # Force worlds into the 'minecraft-worlds' folder
+          # Folder Settings
           echo "settings:" > server/bukkit.yml
           echo "  world-container: minecraft-worlds" >> server/bukkit.yml
           
-          # PRIVACY: Disable command logging (Hides /msg and /login from GitHub Logs)
+          # Privacy Settings
           echo "commands:" > server/spigot.yml
           echo "  log: false" >> server/spigot.yml
           
-          # Server Properties (Cracked + Optimized)
+          # Server Properties
           echo "server-port=25565" > server/server.properties
           echo "online-mode=false" >> server/server.properties
           echo "motd=GitHub Actions Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
           
-          # SEED LOGIC: If seed.txt exists, add it to properties!
-          if [ -f seed.txt ]; then
-             SEED=$(cat seed.txt)
-             echo "✅ Custom Seed Found: $SEED"
-             echo "level-seed=$SEED" >> server/server.properties
+          # --- NEW SEED LOGIC ---
+          # Check if the "Backup Restored" flag exists
+          if [ ! -f server/BACKUP_WAS_RESTORED ]; then
+             # No flag = No backup = New World
+             if [ -n "$SEED_SECRET" ]; then
+                echo "✅ New World Detected! Applying Secret Seed..."
+                echo "level-seed=$SEED_SECRET" >> server/server.properties
+             else
+                echo "⚠️ New World, but no SEED secret found. Using Random."
+             fi
           else
-             echo "⚠️ No seed.txt found. Using Random Seed."
+             # Flag exists = Backup restored
+             echo "♻️ Backup found. Skipping Seed to protect existing world."
           fi
 
-      # 5. Download Core & Plugins (Smart Fallback Mode)
+      # 5. Download Core & Plugins
       - name: Download Paper (Smart Version Check) & Plugins
         run: |
-          TARGET_VERSION="1.21.11"
+          TARGET_VERSION="1.21.1"
           PROJECT_URL="https://api.papermc.io/v2/projects/paper"
           
-          echo "🔍 Checking if version $TARGET_VERSION exists..."
-          
-          # Check if the target version is in the list of available versions
           if curl -s $PROJECT_URL | jq -e ".versions | index(\"$TARGET_VERSION\")" > /dev/null; then
             VERSION="$TARGET_VERSION"
-            echo "✅ Success! Version $VERSION found."
           else
-            # If not found, grab the very last version in the list (The Absolute Latest)
             VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
-            echo "⚠️ Version $TARGET_VERSION not found. Falling back to latest available: $VERSION"
           fi
           
-          # Now fetch the latest build for whichever version we picked
           BUILD=$(curl -s $PROJECT_URL/versions/$VERSION | jq '.builds[-1]')
-          
-          echo "⬇️ Downloading Paper $VERSION Build $BUILD..."
           wget -O server/paper.jar "$PROJECT_URL/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
           
-          # Copy Plugins from your Repo to Server
           cp -r plugins/* server/plugins/
 
-      # 6. Configure DiscordSRV (Securely - CRASH PROOF METHOD)
-      - name: 🔧 Configure DiscordSRV (Secure)
+      # 6. Configure DiscordSRV
+      - name: 🔧 Configure DiscordSRV
         env:
-          # This pulls the token from your GitHub Secrets
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          # Check if DiscordSRV jar exists
           if ls server/plugins/DiscordSRV*.jar 1> /dev/null 2>&1; then
-            echo "DiscordSRV detected! Generating secure config..."
             mkdir -p server/plugins/DiscordSRV
-            
             # --- YOUR CHANNEL IDs ---
             CHAT_CHANNEL_ID="1454377524250284096"
             CONSOLE_CHANNEL_ID="1433750303089623120"
             # ------------------------
-            
-            # We use simple 'echo' commands now. This CANNOT crash from indentation errors.
             echo "BotToken: \"$DISCORD_TOKEN\"" > server/plugins/DiscordSRV/config.yml
             echo "Channels: {\"global\": \"$CHAT_CHANNEL_ID\"}" >> server/plugins/DiscordSRV/config.yml
             echo "DiscordConsoleChannelId: \"$CONSOLE_CHANNEL_ID\"" >> server/plugins/DiscordSRV/config.yml
             echo "ConfigVersion: 1.26.0" >> server/plugins/DiscordSRV/config.yml
             echo "Experiment_JdbcAccountLinkBackend: true" >> server/plugins/DiscordSRV/config.yml
-            
-            echo "✅ Discord Config Created Successfully."
-          else
-            echo "DiscordSRV jar not found. Skipping config generation."
           fi
 
-      # 7. Start the Server (With 5h 30m Safety Timer)
-      - name: 🟢 Start Server
+      # 7a. Start Silent Tunnel
+      - name: 🌐 Start Silent Tunnel
         env:
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
-          # Start Tunnel
-          playit --secret $PLAYIT_SECRET &
-          sleep 10
+          # Redirecting output to /dev/null kills the repeating console spam
+          playit --secret $PLAYIT_SECRET > playit_log.txt 2>&1 &
+          echo "⏳ Initializing Tunnels..."
+          sleep 15
+
+      # 7b. Display Connection Info
+      - name: ✨ Show Server IP
+        run: |
+          echo "------------------------------------------"
+          echo "🚀 YOUR MINECRAFT SERVER IS ONLINE!"
+          echo "------------------------------------------"
+          # Extract and print Java IP
+          JAVA_IP=$(grep -oE '[a-zA-Z0-9.-]+\.joinmc\.link' playit_log.txt | head -n 1)
+          echo "🖥️ JAVA IP: ${JAVA_IP:-Check playit.gg dashboard}"
           
-          # Start Game
+          # Extract and print Bedrock IP + Port
+          BEDROCK_INFO=$(grep -oE '[a-zA-Z0-9.-]+\.ply\.gg:[0-9]+' playit_log.txt | head -n 1)
+          echo "📱 BEDROCK: ${BEDROCK_INFO:-Check playit.gg dashboard}"
+          echo "------------------------------------------"
+          echo "🎮 Logs below are only from Minecraft..."
+
+      # 7c. Start Minecraft Server
+      - name: 🟢 Start Server
+        run: |
           cd server
-          # Run for 19800 seconds (5 hours 30 minutes) then automatically stop to save backup
-          echo "Starting server with 5h 30m safety timeout..."
+          # Run Game with 5.5h safety timer
           timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
-      # 8. Auto-Backup (Runs on Stop/Crash)
+      # 8. Auto-Backup
       - name: 📤 Backup to Google Drive
-        if: always() # IMPORTANT: Runs even if you cancel the workflow
+        if: always()
         run: |
-          echo "Server stopped. Starting backup..."
           cd server
-          
-          # Zip World AND Plugins (Excluding .jar files)
           zip -r backup.zip minecraft-worlds plugins -x "*.jar"
-          
-          echo "Uploading to Google Drive..."
-          # Save to 'MinecraftServer' folder in Drive
           rclone copy backup.zip gdrive:MinecraftServer/
-          
-          echo "✅ Backup Complete! World & Passwords Saved."
+          echo "✅ Backup Complete!"
