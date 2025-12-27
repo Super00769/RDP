@@ -108,31 +108,30 @@ jobs:
           # Copy Plugins from your Repo to Server
           cp -r plugins/* server/plugins/
 
-      # 6. Configure DiscordSRV (Securely)
+      # 6. Configure DiscordSRV (Securely - CRASH PROOF METHOD)
       - name: 🔧 Configure DiscordSRV (Secure)
         env:
           # This pulls the token from your GitHub Secrets
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          # Check if DiscordSRV jar exists to avoid errors if you haven't uploaded it yet
+          # Check if DiscordSRV jar exists
           if ls server/plugins/DiscordSRV*.jar 1> /dev/null 2>&1; then
             echo "DiscordSRV detected! Generating secure config..."
             mkdir -p server/plugins/DiscordSRV
             
-            # 👇 EDIT THE NUMBERS BELOW WITH YOUR REAL CHANNEL IDs 👇
-            # -------------------------------------------------------
+            # --- YOUR CHANNEL IDs ---
             CHAT_CHANNEL_ID="1454377524250284096"
             CONSOLE_CHANNEL_ID="1433750303089623120"
-            # -------------------------------------------------------
+            # ------------------------
             
-            # This writes the config file using your Secret Token
-            cat <<EOF > server/plugins/DiscordSRV/config.yml
-            BotToken: "$DISCORD_TOKEN"
-            Channels: {"global": "$CHAT_CHANNEL_ID"}
-            DiscordConsoleChannelId: "$CONSOLE_CHANNEL_ID"
-            ConfigVersion: 1.26.0
-            Experiment_JdbcAccountLinkBackend: true
-            EOF
+            # We use simple 'echo' commands now. This CANNOT crash from indentation errors.
+            echo "BotToken: \"$DISCORD_TOKEN\"" > server/plugins/DiscordSRV/config.yml
+            echo "Channels: {\"global\": \"$CHAT_CHANNEL_ID\"}" >> server/plugins/DiscordSRV/config.yml
+            echo "DiscordConsoleChannelId: \"$CONSOLE_CHANNEL_ID\"" >> server/plugins/DiscordSRV/config.yml
+            echo "ConfigVersion: 1.26.0" >> server/plugins/DiscordSRV/config.yml
+            echo "Experiment_JdbcAccountLinkBackend: true" >> server/plugins/DiscordSRV/config.yml
+            
+            echo "✅ Discord Config Created Successfully."
           else
             echo "DiscordSRV jar not found. Skipping config generation."
           fi
