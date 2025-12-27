@@ -1,4 +1,4 @@
-name: Ultimate Minecraft Server
+name: Ultimate Minecraft Server (Google Drive)
 
 on:
   workflow_dispatch: # Manual "Run" button
@@ -26,17 +26,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install playit jq zip unzip
           
-          # Install Rclone (for MEGA backup)
+          # Install Rclone (for Google Drive backup)
           sudo -v ; curl https://rclone.org/install.sh | sudo bash
 
-      # 2. Connect to MEGA Cloud
-      - name: Configure MEGA
+      # 2. Connect to Google Drive (Using Secret Config)
+      - name: Configure Google Drive
         env:
-          MEGA_EMAIL: ${{ secrets.MEGA_EMAIL }}
-          MEGA_PASS: ${{ secrets.MEGA_PASS }}
+          GDRIVE_CONFIG: ${{ secrets.GDRIVE_CONFIG }}
         run: |
-          # Create a secure connection profile named 'mymega'
-          rclone config create mymega mega user "$MEGA_EMAIL" pass "$MEGA_PASS"
+          # Create the config folder
+          mkdir -p ~/.config/rclone
+          # Write the secret config to the file
+          echo "$GDRIVE_CONFIG" > ~/.config/rclone/rclone.conf
+          echo "✅ Google Drive Configured!"
 
       # 3. Restore World & Plugins (If backup exists)
       - name: 📥 Restore Backup
@@ -44,10 +46,10 @@ jobs:
           mkdir -p server/minecraft-worlds
           mkdir -p server/plugins
           
-          echo "Checking MEGA for previous backup..."
+          echo "Checking Google Drive for previous backup..."
           
-          # Try to download. If fail, just print message and continue.
-          rclone copy mymega:minecraft-server/backup.zip server/ || echo "No backup found. Starting Fresh!"
+          # Try to download from 'MinecraftServer' folder in Drive
+          rclone copy gdrive:MinecraftServer/backup.zip server/ || echo "No backup found. Starting Fresh!"
           
           if [ -f server/backup.zip ]; then
             echo "Backup found! Unzipping World & Plugins..."
@@ -152,7 +154,7 @@ jobs:
           timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
       # 8. Auto-Backup (Runs on Stop/Crash)
-      - name: 📤 Backup to MEGA
+      - name: 📤 Backup to Google Drive
         if: always() # IMPORTANT: Runs even if you cancel the workflow
         run: |
           echo "Server stopped. Starting backup..."
@@ -161,8 +163,8 @@ jobs:
           # Zip World AND Plugins (Excluding .jar files)
           zip -r backup.zip minecraft-worlds plugins -x "*.jar"
           
-          echo "Uploading to MEGA..."
-          # Save to 'minecraft-server' folder in MEGA
-          rclone copy backup.zip mymega:minecraft-server/
+          echo "Uploading to Google Drive..."
+          # Save to 'MinecraftServer' folder in Drive
+          rclone copy backup.zip gdrive:MinecraftServer/
           
           echo "✅ Backup Complete! World & Passwords Saved."
