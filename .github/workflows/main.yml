@@ -108,7 +108,36 @@ jobs:
           # Copy Plugins from your Repo to Server
           cp -r plugins/* server/plugins/
 
-      # 6. Start the Server (With 5h 30m Safety Timer)
+      # 6. Configure DiscordSRV (Securely)
+      - name: 🔧 Configure DiscordSRV (Secure)
+        env:
+          # This pulls the token from your GitHub Secrets
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        run: |
+          # Check if DiscordSRV jar exists to avoid errors if you haven't uploaded it yet
+          if ls server/plugins/DiscordSRV*.jar 1> /dev/null 2>&1; then
+            echo "DiscordSRV detected! Generating secure config..."
+            mkdir -p server/plugins/DiscordSRV
+            
+            # 👇 EDIT THE NUMBERS BELOW WITH YOUR REAL CHANNEL IDs 👇
+            # -------------------------------------------------------
+            CHAT_CHANNEL_ID="1454377524250284096"
+            CONSOLE_CHANNEL_ID="1433750303089623120"
+            # -------------------------------------------------------
+            
+            # This writes the config file using your Secret Token
+            cat <<EOF > server/plugins/DiscordSRV/config.yml
+            BotToken: "$DISCORD_TOKEN"
+            Channels: {"global": "$CHAT_CHANNEL_ID"}
+            DiscordConsoleChannelId: "$CONSOLE_CHANNEL_ID"
+            ConfigVersion: 1.26.0
+            Experiment_JdbcAccountLinkBackend: true
+            EOF
+          else
+            echo "DiscordSRV jar not found. Skipping config generation."
+          fi
+
+      # 7. Start the Server (With 5h 30m Safety Timer)
       - name: 🟢 Start Server
         env:
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
@@ -123,7 +152,7 @@ jobs:
           echo "Starting server with 5h 30m safety timeout..."
           timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
-      # 7. Auto-Backup (Runs on Stop/Crash)
+      # 8. Auto-Backup (Runs on Stop/Crash)
       - name: 📤 Backup to MEGA
         if: always() # IMPORTANT: Runs even if you cancel the workflow
         run: |
