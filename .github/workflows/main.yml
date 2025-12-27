@@ -88,16 +88,20 @@ jobs:
              echo "♻️ Backup found. Skipping Seed to protect existing world."
           fi
 
-      # 5. Download Core & Plugins
+      # 5. Download Core & Plugins (Updated Version Logic)
       - name: Download Paper (Smart Version Check) & Plugins
         run: |
-          TARGET_VERSION="1.21.1"
+          TARGET_VERSION="1.21.11"
           PROJECT_URL="https://api.papermc.io/v2/projects/paper"
           
+          # Check if 1.21.11 exists in the PaperMC version list
           if curl -s $PROJECT_URL | jq -e ".versions | index(\"$TARGET_VERSION\")" > /dev/null; then
             VERSION="$TARGET_VERSION"
+            echo "✅ Targeting version $VERSION"
           else
+            # Fallback to absolute latest if 1.21.11 is not found
             VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
+            echo "⚠️ Version $TARGET_VERSION not found. Falling back to latest: $VERSION"
           fi
           
           BUILD=$(curl -s $PROJECT_URL/versions/$VERSION | jq '.builds[-1]')
@@ -128,7 +132,6 @@ jobs:
         env:
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
-          # Redirecting output to /dev/null kills the repeating console spam
           playit --secret $PLAYIT_SECRET > playit_log.txt 2>&1 &
           echo "⏳ Initializing Tunnels..."
           sleep 15
@@ -139,11 +142,9 @@ jobs:
           echo "------------------------------------------"
           echo "🚀 YOUR MINECRAFT SERVER IS ONLINE!"
           echo "------------------------------------------"
-          # Extract and print Java IP
           JAVA_IP=$(grep -oE '[a-zA-Z0-9.-]+\.joinmc\.link' playit_log.txt | head -n 1)
           echo "🖥️ JAVA IP: ${JAVA_IP:-Check playit.gg dashboard}"
           
-          # Extract and print Bedrock IP + Port
           BEDROCK_INFO=$(grep -oE '[a-zA-Z0-9.-]+\.ply\.gg:[0-9]+' playit_log.txt | head -n 1)
           echo "📱 BEDROCK: ${BEDROCK_INFO:-Check playit.gg dashboard}"
           echo "------------------------------------------"
@@ -153,7 +154,6 @@ jobs:
       - name: 🟢 Start Server
         run: |
           cd server
-          # Run Game with 5.5h safety timer
           timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
       # 8. Auto-Backup
