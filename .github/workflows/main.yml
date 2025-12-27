@@ -70,7 +70,7 @@ jobs:
           # Server Properties
           echo "server-port=25565" > server/server.properties
           echo "online-mode=false" >> server/server.properties
-          echo "motd=GitHub Actions Server" >> server/server.properties
+          echo "motd=SuperSMP Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
           
           # --- NEW SEED LOGIC ---
@@ -142,9 +142,11 @@ jobs:
           echo "------------------------------------------"
           echo "🚀 YOUR MINECRAFT SERVER IS ONLINE!"
           echo "------------------------------------------"
+          # Extract and print Java IP
           JAVA_IP=$(grep -oE '[a-zA-Z0-9.-]+\.joinmc\.link' playit_log.txt | head -n 1)
           echo "🖥️ JAVA IP: ${JAVA_IP:-Check playit.gg dashboard}"
           
+          # Extract and print Bedrock IP + Port
           BEDROCK_INFO=$(grep -oE '[a-zA-Z0-9.-]+\.ply\.gg:[0-9]+' playit_log.txt | head -n 1)
           echo "📱 BEDROCK: ${BEDROCK_INFO:-Check playit.gg dashboard}"
           echo "------------------------------------------"
@@ -154,6 +156,7 @@ jobs:
       - name: 🟢 Start Server
         run: |
           cd server
+          # Run Game with 5.5h safety timer
           timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
       # 8. Auto-Backup
