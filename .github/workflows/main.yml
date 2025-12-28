@@ -74,17 +74,15 @@ jobs:
           echo "motd=SuperSMP Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
           
-          # Fixed End Portal Toggle Logic (Dual-Lock)
+          # End Portal Toggle Logic (Dual-Lock)
           if [ "$END_PORTAL" == "false" ]; then
             echo "allow-end=false" >> server/server.properties
             echo "settings: {allow-end: false}" >> server/bukkit.yml
-            echo "❌ End Portal DISABLED"
           else
             echo "allow-end=true" >> server/server.properties
-            echo "✅ End Portal ENABLED"
           fi
 
-          # ENABLE NETHER ROOF & ANTI-XRAY (Proper YAML Structure for Paper 1.21.11)
+          # ENABLE NETHER ROOF & ANTI-XRAY
           mkdir -p server/config
           cat <<EOF > server/config/paper-world-defaults.yml
           anticheat:
@@ -93,9 +91,8 @@ jobs:
               enabled: ${ANTI_XRAY:-false}
               engine-mode: 1
           EOF
-          echo "✅ Nether Roof Teleportation ENABLED"
           
-          # --- NEW SEED LOGIC ---
+          # --- NEW SEED LOGIC (Restored to Original Working Priority) ---
           if [ ! -f server/BACKUP_WAS_RESTORED ]; then
              if [ -n "$SEED_SECRET" ]; then
                 echo "✅ New World Detected! Applying Secret Seed..."
