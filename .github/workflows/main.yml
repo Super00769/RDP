@@ -53,10 +53,9 @@ jobs:
             touch server/BACKUP_WAS_RESTORED
           fi
 
-      # 4. Setup Server Logic (Privacy & Secret Seed)
+      # 4. Setup Server Logic (Privacy, Seed & Nether Roof)
       - name: Configure Server & Folders
         env:
-          # Import the SEED secret here
           SEED_SECRET: ${{ secrets.SEED }}
         run: |
           # Folder Settings
@@ -72,20 +71,17 @@ jobs:
           echo "online-mode=false" >> server/server.properties
           echo "motd=SuperSMP Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
+
+          # ENABLE NETHER ROOF
+          mkdir -p server/config
+          echo "anticheat: {disable-teleportation-to-nether-roof: false}" > server/config/paper-world-defaults.yml
           
           # --- NEW SEED LOGIC ---
-          # Check if the "Backup Restored" flag exists
           if [ ! -f server/BACKUP_WAS_RESTORED ]; then
-             # No flag = No backup = New World
              if [ -n "$SEED_SECRET" ]; then
                 echo "✅ New World Detected! Applying Secret Seed..."
                 echo "level-seed=$SEED_SECRET" >> server/server.properties
-             else
-                echo "⚠️ New World, but no SEED secret found. Using Random."
              fi
-          else
-             # Flag exists = Backup restored
-             echo "♻️ Backup found. Skipping Seed to protect existing world."
           fi
 
       # 5. Download Core & Plugins (Updated Version Logic)
@@ -94,12 +90,10 @@ jobs:
           TARGET_VERSION="1.21.11"
           PROJECT_URL="https://api.papermc.io/v2/projects/paper"
           
-          # Check if 1.21.11 exists in the PaperMC version list
           if curl -s $PROJECT_URL | jq -e ".versions | index(\"$TARGET_VERSION\")" > /dev/null; then
             VERSION="$TARGET_VERSION"
             echo "✅ Targeting version $VERSION"
           else
-            # Fallback to absolute latest if 1.21.11 is not found
             VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
             echo "⚠️ Version $TARGET_VERSION not found. Falling back to latest: $VERSION"
           fi
@@ -116,10 +110,8 @@ jobs:
         run: |
           if ls server/plugins/DiscordSRV*.jar 1> /dev/null 2>&1; then
             mkdir -p server/plugins/DiscordSRV
-            # --- YOUR CHANNEL IDs ---
             CHAT_CHANNEL_ID="1454377524250284096"
             CONSOLE_CHANNEL_ID="1433750303089623120"
-            # ------------------------
             echo "BotToken: \"$DISCORD_TOKEN\"" > server/plugins/DiscordSRV/config.yml
             echo "Channels: {\"global\": \"$CHAT_CHANNEL_ID\"}" >> server/plugins/DiscordSRV/config.yml
             echo "DiscordConsoleChannelId: \"$CONSOLE_CHANNEL_ID\"" >> server/plugins/DiscordSRV/config.yml
@@ -142,21 +134,35 @@ jobs:
           echo "------------------------------------------"
           echo "🚀 YOUR MINECRAFT SERVER IS ONLINE!"
           echo "------------------------------------------"
-          # Extract and print Java IP
           JAVA_IP=$(grep -oE '[a-zA-Z0-9.-]+\.joinmc\.link' playit_log.txt | head -n 1)
           echo "🖥️ JAVA IP: ${JAVA_IP:-Check playit.gg dashboard}"
           
-          # Extract and print Bedrock IP + Port
           BEDROCK_INFO=$(grep -oE '[a-zA-Z0-9.-]+\.ply\.gg:[0-9]+' playit_log.txt | head -n 1)
           echo "📱 BEDROCK: ${BEDROCK_INFO:-Check playit.gg dashboard}"
           echo "------------------------------------------"
           echo "🎮 Logs below are only from Minecraft..."
 
-      # 7c. Start Minecraft Server
+      # 7c. Start Minecraft Server (Portal & Anti-Xray Toggles)
       - name: 🟢 Start Server
+        env:
+          END_PORTAL: ${{ secrets.END_PORTAL }}
+          ANTI_XRAY: ${{ secrets.ANTI_XRAY }}
         run: |
+          # Apply End Portal Toggle
+          if [ "$END_PORTAL" == "false" ]; then
+            echo "allow-end=false" >> server/server.properties
+          else
+            echo "allow-end=true" >> server/server.properties
+          fi
+
+          # Apply Anti-Xray Toggle
+          if [ "$ANTI_XRAY" == "true" ]; then
+            echo "anticheat: {anti-xray: {enabled: true, engine-mode: 1}}" >> server/config/paper-world-defaults.yml
+          else
+            echo "anticheat: {anti-xray: {enabled: false}}" >> server/config/paper-world-defaults.yml
+          fi
+
           cd server
-          # Run Game with 5.5h safety timer
           timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
       # 8. Auto-Backup
