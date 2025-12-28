@@ -51,12 +51,11 @@ jobs:
             touch server/BACKUP_WAS_RESTORED
           fi
 
-      # 4. Setup Server Logic (Privacy, Seed & Fixed Toggles)
+      # 4. Setup Server Logic (Privacy, Seed & End Portal)
       - name: Configure Server & Folders
         env:
           SEED_SECRET: ${{ secrets.SEED }}
           END_PORTAL: ${{ secrets.END_PORTAL }}
-          ANTI_XRAY: ${{ secrets.ANTI_XRAY }}
         run: |
           echo "settings:" > server/bukkit.yml
           echo "  world-container: minecraft-worlds" >> server/bukkit.yml
@@ -69,43 +68,41 @@ jobs:
           echo "motd=SuperSMP Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
 
+          # --- END PORTAL TOGGLE ---
           if [ "$END_PORTAL" == "false" ]; then
             echo "allow-end=false" >> server/server.properties
             echo "  allow-end: false" >> server/bukkit.yml
           else
             echo "allow-end=true" >> server/server.properties
           fi
-
-          mkdir -p server/config
-          if [ "$ANTI_XRAY" == "true" ]; then
-            cat <<EOF > server/config/paper-world-defaults.yml
-          anticheat:
-            anti-xray:
-              enabled: true
-              engine-mode: 1
-          EOF
-            if [ -d "server/minecraft-worlds/world" ]; then
-              mkdir -p server/minecraft-worlds/world
-              echo "anticheat: {anti-xray: {enabled: true, engine-mode: 1}}" > server/minecraft-worlds/world/paper-world.yml
-            fi
-          else
-            echo "anticheat: {anti-xray: {enabled: false}}" > server/config/paper-world-defaults.yml
-          fi
           
+          # --- SEED LOGIC (STRICT ORIGINAL) ---
           if [ ! -f server/BACKUP_WAS_RESTORED ]; then
              if [ -n "$SEED_SECRET" ]; then
+                echo "✅ New World Detected! Applying Secret Seed..."
                 echo "level-seed=$SEED_SECRET" >> server/server.properties
              fi
           fi
 
-      # 5. Download Core & Plugins
+      # 5. Download Core & Plugins (FIXED: Smart Version Check Restored)
       - name: Download Paper (Smart Version Check) & Plugins
         run: |
           TARGET_VERSION="1.21.11"
           PROJECT_URL="https://api.papermc.io/v2/projects/paper"
-          VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
+          
+          # Check if 1.21.11 exists in the PaperMC version list
+          if curl -s $PROJECT_URL | jq -e ".versions | index(\"$TARGET_VERSION\")" > /dev/null; then
+            VERSION="$TARGET_VERSION"
+            echo "✅ Targeting version $VERSION"
+          else
+            # Fallback to absolute latest if 1.21.11 is not found
+            VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
+            echo "⚠️ Version $TARGET_VERSION not found. Falling back to latest: $VERSION"
+          fi
+          
           BUILD=$(curl -s $PROJECT_URL/versions/$VERSION | jq '.builds[-1]')
           wget -O server/paper.jar "$PROJECT_URL/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
+          
           cp -r plugins/* server/plugins/
 
       # 6. Configure Plugins (DiscordSRV & Bedrock Nether)
@@ -141,26 +138,32 @@ jobs:
         run: |
           echo "------------------------------------------"
           echo "🚀 YOUR MINECRAFT SERVER IS ONLINE!"
+          echo "------------------------------------------"
           JAVA_IP=$(grep -oE '[a-zA-Z0-9.-]+\.joinmc\.link' playit_log.txt | head -n 1)
           echo "🖥️ JAVA IP: ${JAVA_IP:-Check playit.gg dashboard}"
           BEDROCK_INFO=$(grep -oE '[a-zA-Z0-9.-]+\.ply\.gg:[0-9]+' playit_log.txt | head -n 1)
           echo "📱 BEDROCK: ${BEDROCK_INFO:-Check playit.gg dashboard}"
           echo "------------------------------------------"
+          echo "🎮 Logs below are only from Minecraft..."
 
-      # 7c. Start Minecraft Server
+      # 7c. Start Minecraft Server (FIXED: Save Before Stop)
       - name: 🟢 Start Server
         run: |
           cd server
-          # Run server in background
+          # Start server in background
           java -Xms6G -Xmx6G -jar paper.jar nogui &
           SERVER_PID=$!
           
-          # Wait for 5.5 hours
+          # Wait for 5.5 hours or until server stops
           sleep 19800s || true
           
-          # Graceful Save & Stop
+          # GRACEFUL SHUTDOWN
+          echo "Saving world and stopping server..."
           echo "stop" > /proc/$SERVER_PID/fd/0 || kill $SERVER_PID
-          wait $SERVER_PID
+          
+          # Wait up to 30s for save to complete, then clear process
+          timeout 30s wait $SERVER_PID || kill -9 $SERVER_PID
+          echo "✅ Server Saved and Stopped Safely."
 
       # 8. Auto-Backup (STRICT ORIGINAL LOGIC)
       - name: 📤 Backup to Google Drive
