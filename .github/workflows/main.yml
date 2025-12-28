@@ -35,7 +35,7 @@ jobs:
           echo "$GDRIVE_CONFIG" > ~/.config/rclone/rclone.conf
           echo "✅ Google Drive Configured!"
 
-      # 3. Restore Backup (STRICT ORIGINAL LOGIC - NO CHANGES)
+      # 3. Restore Backup (STRICT ORIGINAL LOGIC)
       - name: 📥 Restore Backup
         run: |
           mkdir -p server/minecraft-worlds
@@ -58,7 +58,6 @@ jobs:
           END_PORTAL: ${{ secrets.END_PORTAL }}
           ANTI_XRAY: ${{ secrets.ANTI_XRAY }}
         run: |
-          # Keep world container links safe
           echo "settings:" > server/bukkit.yml
           echo "  world-container: minecraft-worlds" >> server/bukkit.yml
           
@@ -70,7 +69,6 @@ jobs:
           echo "motd=SuperSMP Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
 
-          # --- END PORTAL TOGGLE (Fixed Dual-Lock) ---
           if [ "$END_PORTAL" == "false" ]; then
             echo "allow-end=false" >> server/server.properties
             echo "  allow-end: false" >> server/bukkit.yml
@@ -78,26 +76,25 @@ jobs:
             echo "allow-end=true" >> server/server.properties
           fi
 
-          # --- ANTI-XRAY FIX (Fixed YAML Structure) ---
           mkdir -p server/config
           if [ "$ANTI_XRAY" == "true" ]; then
-          cat <<EOF > server/config/paper-world-defaults.yml
+            cat <<EOF > server/config/paper-world-defaults.yml
           anticheat:
             anti-xray:
               enabled: true
               engine-mode: 1
           EOF
+            if [ -d "server/minecraft-worlds/world" ]; then
+              mkdir -p server/minecraft-worlds/world
+              echo "anticheat: {anti-xray: {enabled: true, engine-mode: 1}}" > server/minecraft-worlds/world/paper-world.yml
+            fi
           else
             echo "anticheat: {anti-xray: {enabled: false}}" > server/config/paper-world-defaults.yml
           fi
           
-          # --- SEED LOGIC (STRICT ORIGINAL) ---
           if [ ! -f server/BACKUP_WAS_RESTORED ]; then
              if [ -n "$SEED_SECRET" ]; then
-                echo "✅ New World Detected! Applying Secret Seed..."
                 echo "level-seed=$SEED_SECRET" >> server/server.properties
-             else
-                echo "⚠️ New World, but no SEED secret found. Using Random."
              fi
           fi
 
@@ -106,23 +103,16 @@ jobs:
         run: |
           TARGET_VERSION="1.21.11"
           PROJECT_URL="https://api.papermc.io/v2/projects/paper"
-          if curl -s $PROJECT_URL | jq -e ".versions | index(\"$TARGET_VERSION\")" > /dev/null; then
-            VERSION="$TARGET_VERSION"
-            echo "✅ Targeting version $VERSION"
-          else
-            VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
-            echo "⚠️ Version $TARGET_VERSION not found. Falling back to latest: $VERSION"
-          fi
+          VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
           BUILD=$(curl -s $PROJECT_URL/versions/$VERSION | jq '.builds[-1]')
           wget -O server/paper.jar "$PROJECT_URL/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
           cp -r plugins/* server/plugins/
 
-      # 6. Configure Plugins (DiscordSRV & FIXED Bedrock Nether)
+      # 6. Configure Plugins (DiscordSRV & Bedrock Nether)
       - name: 🔧 Configure Plugins
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
-          # 1. DiscordSRV Logic (Exactly as Main Version)
           if ls server/plugins/DiscordSRV*.jar 1> /dev/null 2>&1; then
             mkdir -p server/plugins/DiscordSRV
             echo "BotToken: \"$DISCORD_TOKEN\"" > server/plugins/DiscordSRV/config.yml
@@ -132,10 +122,8 @@ jobs:
             echo "Experiment_JdbcAccountLinkBackend: true" >> server/plugins/DiscordSRV/config.yml
           fi
 
-          # 2. BEDROCK NETHER ROOF VISIBILITY FIX (Fixed Force-Write)
           if ls server/plugins/Geyser-Spigot*.jar 1> /dev/null 2>&1; then
             mkdir -p server/plugins/Geyser-Spigot
-            # We use a clean overwrite here to ensure Bedrock players can see their blocks
             echo "above-bedrock-nether-building: true" > server/plugins/Geyser-Spigot/config.yml
             echo "max-build-height: 256" >> server/plugins/Geyser-Spigot/config.yml
           fi
@@ -146,27 +134,33 @@ jobs:
           PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
           playit --secret $PLAYIT_SECRET > playit_log.txt 2>&1 &
-          echo "⏳ Initializing Tunnels..."
           sleep 15
 
-      # 7b. Display Connection Info (STRICT ORIGINAL LOGS)
+      # 7b. Display Connection Info
       - name: ✨ Show Server IP
         run: |
           echo "------------------------------------------"
           echo "🚀 YOUR MINECRAFT SERVER IS ONLINE!"
-          echo "------------------------------------------"
           JAVA_IP=$(grep -oE '[a-zA-Z0-9.-]+\.joinmc\.link' playit_log.txt | head -n 1)
           echo "🖥️ JAVA IP: ${JAVA_IP:-Check playit.gg dashboard}"
           BEDROCK_INFO=$(grep -oE '[a-zA-Z0-9.-]+\.ply\.gg:[0-9]+' playit_log.txt | head -n 1)
           echo "📱 BEDROCK: ${BEDROCK_INFO:-Check playit.gg dashboard}"
           echo "------------------------------------------"
-          echo "🎮 Logs below are only from Minecraft..."
 
       # 7c. Start Minecraft Server
       - name: 🟢 Start Server
         run: |
           cd server
-          timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
+          # Run server in background
+          java -Xms6G -Xmx6G -jar paper.jar nogui &
+          SERVER_PID=$!
+          
+          # Wait for 5.5 hours
+          sleep 19800s || true
+          
+          # Graceful Save & Stop
+          echo "stop" > /proc/$SERVER_PID/fd/0 || kill $SERVER_PID
+          wait $SERVER_PID
 
       # 8. Auto-Backup (STRICT ORIGINAL LOGIC)
       - name: 📤 Backup to Google Drive
