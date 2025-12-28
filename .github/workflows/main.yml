@@ -57,6 +57,8 @@ jobs:
       - name: Configure Server & Folders
         env:
           SEED_SECRET: ${{ secrets.SEED }}
+          END_PORTAL: ${{ secrets.END_PORTAL }}
+          ANTI_XRAY: ${{ secrets.ANTI_XRAY }}
         run: |
           # Folder Settings
           echo "settings:" > server/bukkit.yml
@@ -66,15 +68,28 @@ jobs:
           echo "commands:" > server/spigot.yml
           echo "  log: false" >> server/spigot.yml
           
-          # Server Properties
+          # Server Properties (Combined with End Portal Logic)
           echo "server-port=25565" > server/server.properties
           echo "online-mode=false" >> server/server.properties
           echo "motd=SuperSMP Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
+          
+          # Fixed End Portal Toggle Logic
+          if [ "$END_PORTAL" == "false" ]; then
+            echo "allow-end=false" >> server/server.properties
+          else
+            echo "allow-end=true" >> server/server.properties
+          fi
 
-          # ENABLE NETHER ROOF
+          # ENABLE NETHER ROOF & ANTI-XRAY (Proper YAML Structure)
           mkdir -p server/config
-          echo "anticheat: {disable-teleportation-to-nether-roof: false}" > server/config/paper-world-defaults.yml
+          cat <<EOF > server/config/paper-world-defaults.yml
+          anticheat:
+            disable-teleportation-to-nether-roof: false
+            anti-xray:
+              enabled: ${ANTI__XRAY:-false}
+              engine-mode: 1
+          EOF
           
           # --- NEW SEED LOGIC ---
           if [ ! -f server/BACKUP_WAS_RESTORED ]; then
@@ -142,27 +157,11 @@ jobs:
           echo "------------------------------------------"
           echo "🎮 Logs below are only from Minecraft..."
 
-      # 7c. Start Minecraft Server (Portal & Anti-Xray Toggles)
+      # 7c. Start Minecraft Server
       - name: 🟢 Start Server
-        env:
-          END_PORTAL: ${{ secrets.END_PORTAL }}
-          ANTI_XRAY: ${{ secrets.ANTI_XRAY }}
         run: |
-          # Apply End Portal Toggle
-          if [ "$END_PORTAL" == "false" ]; then
-            echo "allow-end=false" >> server/server.properties
-          else
-            echo "allow-end=true" >> server/server.properties
-          fi
-
-          # Apply Anti-Xray Toggle
-          if [ "$ANTI_XRAY" == "true" ]; then
-            echo "anticheat: {anti-xray: {enabled: true, engine-mode: 1}}" >> server/config/paper-world-defaults.yml
-          else
-            echo "anticheat: {anti-xray: {enabled: false}}" >> server/config/paper-world-defaults.yml
-          fi
-
           cd server
+          # Run Game with 5.5h safety timer
           timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
       # 8. Auto-Backup
