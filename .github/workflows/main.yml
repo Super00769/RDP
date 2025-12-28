@@ -35,7 +35,7 @@ jobs:
           echo "$GDRIVE_CONFIG" > ~/.config/rclone/rclone.conf
           echo "✅ Google Drive Configured!"
 
-      # 3. Restore Backup (Original Logic Kept)
+      # 3. Restore Backup (And Set Flag)
       - name: 📥 Restore Backup
         run: |
           mkdir -p server/minecraft-worlds
@@ -60,15 +60,13 @@ jobs:
           END_PORTAL: ${{ secrets.END_PORTAL }}
           ANTI_XRAY: ${{ secrets.ANTI_XRAY }}
         run: |
-          # Folder Settings
+          # Use append (>>) to ensure we don't break the restored folder links
           echo "settings:" > server/bukkit.yml
           echo "  world-container: minecraft-worlds" >> server/bukkit.yml
           
-          # Privacy Settings
           echo "commands:" > server/spigot.yml
           echo "  log: false" >> server/spigot.yml
           
-          # Server Properties
           echo "server-port=25565" > server/server.properties
           echo "online-mode=false" >> server/server.properties
           echo "motd=SuperSMP Server" >> server/server.properties
@@ -77,7 +75,7 @@ jobs:
           # --- END PORTAL TOGGLE ---
           if [ "$END_PORTAL" == "false" ]; then
             echo "allow-end=false" >> server/server.properties
-            echo "settings: {allow-end: false}" >> server/bukkit.yml
+            echo "  allow-end: false" >> server/bukkit.yml
           else
             echo "allow-end=true" >> server/server.properties
           fi
@@ -90,7 +88,7 @@ jobs:
             echo "anticheat: {anti-xray: {enabled: false}}" > server/config/paper-world-defaults.yml
           fi
           
-          # --- SEED LOGIC (Original Logic Kept) ---
+          # --- SEED LOGIC (Restored & Fixed) ---
           if [ ! -f server/BACKUP_WAS_RESTORED ]; then
              if [ -n "$SEED_SECRET" ]; then
                 echo "✅ New World Detected! Applying Secret Seed..."
@@ -102,7 +100,7 @@ jobs:
              echo "♻️ Backup found. Skipping Seed to protect existing world."
           fi
 
-      # 5. Download Core & Plugins
+      # 5. Download Core & Plugins (Updated Version Logic)
       - name: Download Paper (Smart Version Check) & Plugins
         run: |
           TARGET_VERSION="1.21.11"
@@ -121,11 +119,12 @@ jobs:
           
           cp -r plugins/* server/plugins/
 
-      # 6. Configure DiscordSRV
-      - name: 🔧 Configure DiscordSRV
+      # 6. Configure Plugins (DiscordSRV & Bedrock Fix)
+      - name: 🔧 Configure Plugins
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         run: |
+          # DiscordSRV Logic
           if ls server/plugins/DiscordSRV*.jar 1> /dev/null 2>&1; then
             mkdir -p server/plugins/DiscordSRV
             CHAT_CHANNEL_ID="1454377524250284096"
@@ -137,6 +136,12 @@ jobs:
             echo "Experiment_JdbcAccountLinkBackend: true" >> server/plugins/DiscordSRV/config.yml
           fi
 
+          # BEDROCK NETHER ROOF FIX
+          if ls server/plugins/Geyser-Spigot*.jar 1> /dev/null 2>&1; then
+            mkdir -p server/plugins/Geyser-Spigot
+            echo "above-bedrock-nether-building: true" >> server/plugins/Geyser-Spigot/config.yml
+          fi
+
       # 7a. Start Silent Tunnel
       - name: 🌐 Start Silent Tunnel
         env:
@@ -146,7 +151,7 @@ jobs:
           echo "⏳ Initializing Tunnels..."
           sleep 15
 
-      # 7b. Display Connection Info
+      # 7b. Display Connection Info (Exactly as your stable version)
       - name: ✨ Show Server IP
         run: |
           echo "------------------------------------------"
