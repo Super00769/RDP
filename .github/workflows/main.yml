@@ -35,7 +35,7 @@ jobs:
           echo "$GDRIVE_CONFIG" > ~/.config/rclone/rclone.conf
           echo "✅ Google Drive Configured!"
 
-      # 3. Restore Backup (And Set Flag)
+      # 3. Restore Backup (Original Logic Kept)
       - name: 📥 Restore Backup
         run: |
           mkdir -p server/minecraft-worlds
@@ -53,7 +53,7 @@ jobs:
             touch server/BACKUP_WAS_RESTORED
           fi
 
-      # 4. Setup Server Logic (Privacy, Seed & Nether Roof)
+      # 4. Setup Server Logic (Privacy, Seed & Toggles)
       - name: Configure Server & Folders
         env:
           SEED_SECRET: ${{ secrets.SEED }}
@@ -73,8 +73,8 @@ jobs:
           echo "online-mode=false" >> server/server.properties
           echo "motd=SuperSMP Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
-          
-          # End Portal Toggle Logic (Dual-Lock)
+
+          # --- END PORTAL TOGGLE ---
           if [ "$END_PORTAL" == "false" ]; then
             echo "allow-end=false" >> server/server.properties
             echo "settings: {allow-end: false}" >> server/bukkit.yml
@@ -82,25 +82,27 @@ jobs:
             echo "allow-end=true" >> server/server.properties
           fi
 
-          # ENABLE NETHER ROOF & ANTI-XRAY
+          # --- ANTI-XRAY TOGGLE ---
           mkdir -p server/config
-          cat <<EOF > server/config/paper-world-defaults.yml
-          anticheat:
-            disable-teleportation-to-nether-roof: false
-            anti-xray:
-              enabled: ${ANTI_XRAY:-false}
-              engine-mode: 1
-          EOF
+          if [ "$ANTI_XRAY" == "true" ]; then
+            echo "anticheat: {anti-xray: {enabled: true, engine-mode: 1}}" > server/config/paper-world-defaults.yml
+          else
+            echo "anticheat: {anti-xray: {enabled: false}}" > server/config/paper-world-defaults.yml
+          fi
           
-          # --- NEW SEED LOGIC (Restored to Original Working Priority) ---
+          # --- SEED LOGIC (Original Logic Kept) ---
           if [ ! -f server/BACKUP_WAS_RESTORED ]; then
              if [ -n "$SEED_SECRET" ]; then
                 echo "✅ New World Detected! Applying Secret Seed..."
                 echo "level-seed=$SEED_SECRET" >> server/server.properties
+             else
+                echo "⚠️ New World, but no SEED secret found. Using Random."
              fi
+          else
+             echo "♻️ Backup found. Skipping Seed to protect existing world."
           fi
 
-      # 5. Download Core & Plugins (Updated Version Logic)
+      # 5. Download Core & Plugins
       - name: Download Paper (Smart Version Check) & Plugins
         run: |
           TARGET_VERSION="1.21.11"
@@ -162,7 +164,6 @@ jobs:
       - name: 🟢 Start Server
         run: |
           cd server
-          # Run Game with 5.5h safety timer
           timeout 19800s java -Xms6G -Xmx6G -jar paper.jar nogui || true
 
       # 8. Auto-Backup
