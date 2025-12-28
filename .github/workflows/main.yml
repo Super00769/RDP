@@ -84,18 +84,16 @@ jobs:
              fi
           fi
 
-      # 5. Download Core & Plugins (FIXED: Smart Version Check Restored)
+      # 5. Download Core & Plugins (Smart Version Check)
       - name: Download Paper (Smart Version Check) & Plugins
         run: |
           TARGET_VERSION="1.21.11"
           PROJECT_URL="https://api.papermc.io/v2/projects/paper"
           
-          # Check if 1.21.11 exists in the PaperMC version list
           if curl -s $PROJECT_URL | jq -e ".versions | index(\"$TARGET_VERSION\")" > /dev/null; then
             VERSION="$TARGET_VERSION"
             echo "✅ Targeting version $VERSION"
           else
-            # Fallback to absolute latest if 1.21.11 is not found
             VERSION=$(curl -s $PROJECT_URL | jq -r '.versions[-1]')
             echo "⚠️ Version $TARGET_VERSION not found. Falling back to latest: $VERSION"
           fi
@@ -146,24 +144,36 @@ jobs:
           echo "------------------------------------------"
           echo "🎮 Logs below are only from Minecraft..."
 
-      # 7c. Start Minecraft Server (FIXED: Save Before Stop)
+      # 7c. Start Minecraft Server (FIXED: Auto-Detect Manual Stop)
       - name: 🟢 Start Server
         run: |
           cd server
-          # Start server in background
+          
+          # 1. Start Server in Background
           java -Xms6G -Xmx6G -jar paper.jar nogui &
           SERVER_PID=$!
           
-          # Wait for 5.5 hours or until server stops
-          sleep 19800s || true
+          # 2. Wait Loop (Checks every 10s if server is still running)
+          # This allows the script to detect if you type /stop manually!
+          START_TIME=$(date +%s)
+          MAX_DURATION=19800 # 5.5 Hours
           
-          # GRACEFUL SHUTDOWN
-          echo "Saving world and stopping server..."
-          echo "stop" > /proc/$SERVER_PID/fd/0 || kill $SERVER_PID
+          while kill -0 $SERVER_PID 2>/dev/null; do
+            CURRENT_TIME=$(date +%s)
+            ELAPSED=$((CURRENT_TIME - START_TIME))
+            
+            # If timer runs out, force stop
+            if [ $ELAPSED -ge $MAX_DURATION ]; then
+              echo "⏰ Time limit reached. Stopping server..."
+              echo "stop" > /proc/$SERVER_PID/fd/0
+              break
+            fi
+            sleep 10
+          done
           
-          # Wait up to 30s for save to complete, then clear process
-          timeout 30s wait $SERVER_PID || kill -9 $SERVER_PID
-          echo "✅ Server Saved and Stopped Safely."
+          # 3. Final Cleanup (Wait for process to actually close)
+          wait $SERVER_PID
+          echo "✅ Server process finished. Proceeding to backup..."
 
       # 8. Auto-Backup (STRICT ORIGINAL LOGIC)
       - name: 📤 Backup to Google Drive
