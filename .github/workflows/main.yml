@@ -23,7 +23,7 @@ jobs:
           curl -SsL https://playit-cloud.github.io/ppa/key.gpg | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/playit.gpg >/dev/null
           echo "deb [signed-by=/etc/apt/trusted.gpg.d/playit.gpg] https://playit-cloud.github.io/ppa/data ./" | sudo tee /etc/apt/sources.list.d/playit-cloud.list
           sudo apt-get update
-          sudo apt-get install playit jq zip unzip
+          sudo apt-get install playit jq zip unzip -y
           sudo -v ; curl https://rclone.org/install.sh | sudo bash
 
       # 2. Connect to Google Drive
@@ -68,28 +68,32 @@ jobs:
           echo "commands:" > server/spigot.yml
           echo "  log: false" >> server/spigot.yml
           
-          # Server Properties (Combined with End Portal Logic)
+          # Server Properties
           echo "server-port=25565" > server/server.properties
           echo "online-mode=false" >> server/server.properties
           echo "motd=SuperSMP Server" >> server/server.properties
           echo "eula=true" > server/eula.txt
           
-          # Fixed End Portal Toggle Logic
+          # Fixed End Portal Toggle Logic (Dual-Lock)
           if [ "$END_PORTAL" == "false" ]; then
             echo "allow-end=false" >> server/server.properties
+            echo "settings: {allow-end: false}" >> server/bukkit.yml
+            echo "❌ End Portal DISABLED"
           else
             echo "allow-end=true" >> server/server.properties
+            echo "✅ End Portal ENABLED"
           fi
 
-          # ENABLE NETHER ROOF & ANTI-XRAY (Proper YAML Structure)
+          # ENABLE NETHER ROOF & ANTI-XRAY (Proper YAML Structure for Paper 1.21.11)
           mkdir -p server/config
           cat <<EOF > server/config/paper-world-defaults.yml
           anticheat:
             disable-teleportation-to-nether-roof: false
             anti-xray:
-              enabled: ${ANTI__XRAY:-false}
+              enabled: ${ANTI_XRAY:-false}
               engine-mode: 1
           EOF
+          echo "✅ Nether Roof Teleportation ENABLED"
           
           # --- NEW SEED LOGIC ---
           if [ ! -f server/BACKUP_WAS_RESTORED ]; then
