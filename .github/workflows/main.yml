@@ -144,7 +144,7 @@ jobs:
           echo "------------------------------------------"
           echo "🎮 Logs below are only from Minecraft..."
 
-      # 7c. Start Minecraft Server (FIXED: Auto-Detect Manual Stop)
+      # 7c. Start Minecraft Server (FIXED: Force Kill Timeout)
       - name: 🟢 Start Server
         run: |
           cd server
@@ -153,26 +153,43 @@ jobs:
           java -Xms6G -Xmx6G -jar paper.jar nogui &
           SERVER_PID=$!
           
-          # 2. Wait Loop (Checks every 10s if server is still running)
-          # This allows the script to detect if you type /stop manually!
+          # 2. Safety Timer Logic (Auto-Detects Manual Stop)
           START_TIME=$(date +%s)
           MAX_DURATION=19800 # 5.5 Hours
+          
+          echo "⏳ Server started. Monitoring for 5.5 hours or manual stop..."
           
           while kill -0 $SERVER_PID 2>/dev/null; do
             CURRENT_TIME=$(date +%s)
             ELAPSED=$((CURRENT_TIME - START_TIME))
             
-            # If timer runs out, force stop
+            # If timer runs out (5.5 hours)
             if [ $ELAPSED -ge $MAX_DURATION ]; then
-              echo "⏰ Time limit reached. Stopping server..."
+              echo "⏰ Time limit reached (5.5h). Initiating shutdown..."
+              
+              # Try Graceful Stop
               echo "stop" > /proc/$SERVER_PID/fd/0
+              
+              # Give it 60 seconds to save and close
+              count=0
+              while kill -0 $SERVER_PID 2>/dev/null && [ $count -lt 6 ]; do
+                sleep 10
+                count=$((count+1))
+                echo "Waiting for save... ($((count*10))s)"
+              done
+              
+              # If still running after 60s, FORCE KILL
+              if kill -0 $SERVER_PID 2>/dev/null; then
+                 echo "⚠️ Server stuck! Force killing to ensure backup..."
+                 kill -9 $SERVER_PID
+              fi
               break
             fi
             sleep 10
           done
           
-          # 3. Final Cleanup (Wait for process to actually close)
-          wait $SERVER_PID
+          # 3. Final Cleanup
+          wait $SERVER_PID || true
           echo "✅ Server process finished. Proceeding to backup..."
 
       # 8. Auto-Backup (STRICT ORIGINAL LOGIC)
