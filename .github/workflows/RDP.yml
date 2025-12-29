@@ -144,7 +144,7 @@ jobs:
           echo "------------------------------------------"
           echo "🎮 Logs below are only from Minecraft..."
 
-      # 7c. Start Minecraft Server (FIXED: Force Kill Timeout)
+      # 7c. Start Minecraft Server (UPDATED: Added Warnings)
       - name: 🟢 Start Server
         run: |
           cd server
@@ -153,9 +153,14 @@ jobs:
           java -Xms6G -Xmx6G -jar paper.jar nogui &
           SERVER_PID=$!
           
-          # 2. Safety Timer Logic (Auto-Detects Manual Stop)
+          # 2. Safety Timer Logic (With Warnings)
           START_TIME=$(date +%s)
           MAX_DURATION=19800 # 5.5 Hours
+          
+          # Flags to ensure we only warn once
+          WARNED_30="false"
+          WARNED_1="false"
+          WARNED_COUNTDOWN="false"
           
           echo "⏳ Server started. Monitoring for 5.5 hours or manual stop..."
           
@@ -163,6 +168,29 @@ jobs:
             CURRENT_TIME=$(date +%s)
             ELAPSED=$((CURRENT_TIME - START_TIME))
             
+            # --- WARNING 1: 30 Minutes Left (at 18000s) ---
+            if [ $ELAPSED -ge 18000 ] && [ "$WARNED_30" == "false" ]; then
+                echo "say ⚠️ NOTICE: Server will shutdown in 30 minutes!" > /proc/$SERVER_PID/fd/0
+                WARNED_30="true"
+            fi
+
+            # --- WARNING 2: 1 Minute Left (at 19740s) ---
+            if [ $ELAPSED -ge 19740 ] && [ "$WARNED_1" == "false" ]; then
+                echo "say 🚨 URGENT: Server will shutdown in 1 MINUTE!" > /proc/$SERVER_PID/fd/0
+                WARNED_1="true"
+            fi
+
+            # --- WARNING 3: 15s Countdown (at 19785s) ---
+            if [ $ELAPSED -ge 19785 ] && [ "$WARNED_COUNTDOWN" == "false" ]; then
+                WARNED_COUNTDOWN="true"
+                echo "say 🚨 Countdown started..." > /proc/$SERVER_PID/fd/0
+                for i in {15..1}; do
+                   echo "say Server shutting down in $i..." > /proc/$SERVER_PID/fd/0
+                   sleep 1
+                done
+                echo "say 👋 Server is closing now!" > /proc/$SERVER_PID/fd/0
+            fi
+
             # If timer runs out (5.5 hours)
             if [ $ELAPSED -ge $MAX_DURATION ]; then
               echo "⏰ Time limit reached (5.5h). Initiating shutdown..."
